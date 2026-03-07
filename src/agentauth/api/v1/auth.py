@@ -1,6 +1,7 @@
 """Authentication endpoints."""
 
 from typing import Annotated, Any
+from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
@@ -124,6 +125,11 @@ async def token_endpoint(
         client_id=client_id,
     )
 
+    subject_token = body.get("subject_token")
+    subject_token_type = body.get("subject_token_type")
+    requested_token_type = body.get("requested_token_type")
+    audience = body.get("audience")
+
     if not grant_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -152,13 +158,25 @@ async def token_endpoint(
             client_secret=client_secret,
             requested_scope=scope,
         )
+    elif grant_type == "urn:ietf:params:oauth:grant-type:token-exchange":
+        return await _handle_token_exchange(
+            session=session,
+            subject_token=subject_token,
+            subject_token_type=subject_token_type,
+            requested_token_type=requested_token_type,
+            requested_scope=scope,
+            audience=audience,
+        )
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "unsupported_grant_type",
-                "error_description": f"Grant type '{grant_type}' is not supported. "
-                f"Supported: client_credentials, refresh_token, agent_delegation",
+                "error_description": (
+                    f"Grant type '{grant_type}' is not supported. "
+                    "Supported: client_credentials, refresh_token, agent_delegation, "
+                    "urn:ietf:params:oauth:grant-type:token-exchange"
+                ),
             },
         )
 
@@ -463,10 +481,6 @@ async def _handle_agent_delegation(
     (intersection across the chain), and issues an access token containing
     the delegation_chain claim.
     """
-    import jwt as pyjwt
-    from sqlalchemy import select
-
-    from agentauth.models.agent import Agent
     from agentauth.services.delegation import DelegationService
 
     if not delegation_token:
@@ -577,6 +591,172 @@ async def _handle_agent_delegation(
             scopes=scopes_to_grant,
             chain_length=len(full_chain),
         )
+        return token_response
+
+    except TokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "server_error", "error_description": str(e)},
+        ) from e
+
+
+async def _handle_token_exchange(
+    session: AsyncSession,
+    subject_token: str | None,
+    subject_token_type: str | None,
+    requested_token_type: str | None,
+    requested_scope: str | None,
+    audience: str | None,
+) -> TokenResponse:
+    """
+    Handle the RFC 8693 token-exchange grant type.
+
+    Validates a subject_token (an existing access token) and issues a new
+    token for the same agent, optionally with reduced scope and/or a
+    different audience. The delegation chain from the subject token is
+    preserved in the new token.
+
+    Common use cases:
+    - Parent agent token → child agent token with reduced scope
+    - Scope downgrade before passing credentials to a sub-agent
+    - Re-targeting a token for a different audience
+
+    Args:
+        session: Database session
+        subject_token: The token being exchanged (must be an access token)
+        subject_token_type: Expected to be 'urn:ietf:params:oauth:token-type:access_token'
+        requested_token_type: Token type to issue (only access_token supported)
+        requested_scope: Space-separated scopes for the new token (must be subset of subject)
+        audience: Optional audience override for the new token
+
+    Returns:
+        TokenResponse with new access token
+
+    Raises:
+        HTTPException: 400 for missing/invalid params, 401 for invalid subject token
+    """
+    ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+
+    if not subject_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_request",
+                "error_description": "subject_token is required for token-exchange grant",
+            },
+        )
+
+    # We only support access token subjects
+    if subject_token_type and subject_token_type != ACCESS_TOKEN_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_request",
+                "error_description": (
+                    f"Unsupported subject_token_type '{subject_token_type}'. "
+                    f"Only '{ACCESS_TOKEN_TYPE}' is supported."
+                ),
+            },
+        )
+
+    # We only issue access tokens
+    if requested_token_type and requested_token_type != ACCESS_TOKEN_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_request",
+                "error_description": (
+                    f"Unsupported requested_token_type '{requested_token_type}'. "
+                    f"Only '{ACCESS_TOKEN_TYPE}' is supported."
+                ),
+            },
+        )
+
+    token_service = TokenService(session)
+    audit_service = AuditService(session)
+
+    # Validate the subject token
+    validation = await token_service.validate_token(subject_token, expected_token_type="access")
+    if not validation.valid or validation.claims is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "invalid_grant",
+                "error_description": f"Invalid subject_token: {validation.error}",
+            },
+        )
+
+    claims = validation.claims
+
+    # Load the agent from the subject token
+    result = await session.execute(
+        select(Agent).where(Agent.id == UUID(claims.sub))
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None or not agent.is_active():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "invalid_grant",
+                "error_description": "Agent not found or inactive",
+            },
+        )
+
+    # Scope attenuation: new scopes must be a subset of subject token scopes
+    subject_scopes = claims.scopes or []
+    if requested_scope:
+        requested_list = _parse_scopes(requested_scope)
+        invalid = [s for s in requested_list if s not in subject_scopes]
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "invalid_scope",
+                    "error_description": (
+                        f"Requested scopes {invalid} are not present in subject_token"
+                    ),
+                },
+            )
+        granted_scopes = requested_list
+    else:
+        granted_scopes = subject_scopes
+
+    # Preserve delegation chain from the subject token
+    delegation_chain = claims.delegation_chain
+
+    try:
+        token_response = await token_service.mint_token(
+            agent=agent,
+            scopes=granted_scopes,
+            audience=audience,
+            token_type="access",
+            delegation_chain=delegation_chain,
+        )
+
+        await audit_service.record_event(
+            event_type="token.issued",
+            action="token_exchange",
+            outcome=EventOutcome.SUCCESS,
+            actor_type=ActorType.AGENT,
+            target_type="token",
+            actor_id=agent.id,
+            metadata={
+                "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "subject_token_sub": claims.sub,
+                "granted_scopes": granted_scopes,
+                "audience": audience,
+            },
+        )
+
+        await session.commit()
+
+        logger.info(
+            "Token exchange completed",
+            agent_id=str(agent.id),
+            granted_scopes=granted_scopes,
+            audience=audience,
+        )
+
         return token_response
 
     except TokenError as e:
@@ -720,6 +900,21 @@ async def revoke_token(
     return {}
 
 
+def _scope_is_allowed(requested: str, allowed_patterns: list[str]) -> bool:
+    """Check if a requested scope is covered by any of the allowed scope patterns.
+
+    Supports wildcard patterns: 'files.*' covers 'files.read', 'files.write', etc.
+    """
+    for pattern in allowed_patterns:
+        if pattern.endswith(".*"):
+            prefix = pattern[:-1]  # strip '*', keep the dot
+            if requested.startswith(prefix):
+                return True
+        elif pattern == requested:
+            return True
+    return False
+
+
 def _validate_scopes(
     requested_scopes: list[str],
     allowed_scopes: list[str],
@@ -727,13 +922,13 @@ def _validate_scopes(
     """
     Validate requested scopes against allowed scopes.
 
-    Ensures no scope escalation: requested scopes must be a subset
-    of allowed scopes. If no scopes are requested, all allowed scopes
-    are granted.
+    Ensures no scope escalation: each requested scope must be covered
+    by at least one allowed scope pattern (supports wildcards like 'files.*').
+    If no scopes are requested, all allowed scopes are granted.
 
     Args:
         requested_scopes: Scopes requested by client
-        allowed_scopes: Scopes allowed by credential
+        allowed_scopes: Scopes allowed by credential (may include wildcards)
 
     Returns:
         Validated scopes to grant, or None if validation fails
@@ -742,12 +937,9 @@ def _validate_scopes(
     if not requested_scopes:
         return allowed_scopes
 
-    # Check that all requested scopes are in allowed scopes
-    requested_set = set(requested_scopes)
-    allowed_set = set(allowed_scopes)
-
-    if not requested_set.issubset(allowed_set):
-        # Scope escalation attempted
-        return None
+    # Each requested scope must be covered by an allowed pattern
+    for scope in requested_scopes:
+        if not _scope_is_allowed(scope, allowed_scopes):
+            return None
 
     return requested_scopes

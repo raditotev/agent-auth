@@ -11,6 +11,8 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentauth.config import settings
+from agentauth.core.security import decrypt_secret, encrypt_secret
 from agentauth.models.signing_key import KeyAlgorithm, KeyStatus, SigningKey
 
 logger = structlog.get_logger()
@@ -48,12 +50,15 @@ class CryptoService:
             key_size=key_size,
         )
 
-        # Serialize private key to PEM
+        # Serialize private key to PEM (unencrypted in memory only)
         private_pem = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),  # TODO: Encrypt in production
+            encryption_algorithm=serialization.NoEncryption(),
         ).decode("utf-8")
+
+        # Encrypt private key before storage
+        encrypted_private_pem = encrypt_secret(private_pem, settings.secret_key)
 
         # Extract public key
         public_key = private_key.public_key()
@@ -75,7 +80,7 @@ class CryptoService:
         signing_key = SigningKey(
             key_id=key_id,
             algorithm=KeyAlgorithm.RS256,
-            private_key_pem=private_pem,
+            private_key_pem=encrypted_private_pem,
             public_key_pem=public_pem,
             status=KeyStatus.ACTIVE if activation <= datetime.now(UTC) else KeyStatus.PENDING,
             activation_date=activation,
@@ -113,12 +118,15 @@ class CryptoService:
         # Generate ECDSA private key
         private_key = ec.generate_private_key(curve)
 
-        # Serialize private key to PEM
+        # Serialize private key to PEM (unencrypted in memory only)
         private_pem = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),  # TODO: Encrypt in production
+            encryption_algorithm=serialization.NoEncryption(),
         ).decode("utf-8")
+
+        # Encrypt private key before storage
+        encrypted_private_pem = encrypt_secret(private_pem, settings.secret_key)
 
         # Extract public key
         public_key = private_key.public_key()
@@ -140,7 +148,7 @@ class CryptoService:
         signing_key = SigningKey(
             key_id=key_id,
             algorithm=KeyAlgorithm.ES256,
-            private_key_pem=private_pem,
+            private_key_pem=encrypted_private_pem,
             public_key_pem=public_pem,
             status=KeyStatus.ACTIVE if activation <= datetime.now(UTC) else KeyStatus.PENDING,
             activation_date=activation,

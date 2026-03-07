@@ -13,6 +13,19 @@ from agentauth.models.delegation import Delegation
 logger = structlog.get_logger()
 
 
+def _scope_covered_by(requested: str, allowed: str) -> bool:
+    """Return True if `allowed` covers `requested` (supports wildcard suffix `.*`)."""
+    if allowed.endswith(".*"):
+        prefix = allowed[:-1]  # strip '*', keep the trailing dot
+        return requested.startswith(prefix)
+    return requested == allowed
+
+
+def _scope_is_delegatable(scope: str, effective_scopes: set[str]) -> bool:
+    """Return True if `scope` is covered by at least one entry in `effective_scopes`."""
+    return any(_scope_covered_by(scope, eff) for eff in effective_scopes)
+
+
 class DelegationService:
     """Service for creating, validating, and revoking delegations."""
 
@@ -57,12 +70,11 @@ class DelegationService:
         # Compute delegator's effective scopes and chain depth
         effective_scopes, chain_depth = await self.get_effective_scopes_and_depth(delegator_agent_id)
 
-        # Validate scope attenuation
+        # Validate scope attenuation (supports wildcard patterns like 'files.*')
         if effective_scopes is not None:
-            requested_set = set(scopes)
             effective_set = set(effective_scopes)
-            if not requested_set.issubset(effective_set):
-                escalated = requested_set - effective_set
+            escalated = {s for s in scopes if not _scope_is_delegatable(s, effective_set)}
+            if escalated:
                 raise ValueError(
                     f"Scope escalation: delegator does not hold scopes {escalated}"
                 )
@@ -202,18 +214,25 @@ class DelegationService:
         return revoked_count
 
     async def _cascade_revoke(self, agent_id: UUID, now: datetime) -> int:
-        """Recursively revoke all delegations where this agent is the delegator."""
-        result = await self.session.execute(
-            select(Delegation).where(
-                Delegation.delegator_agent_id == agent_id,
-                Delegation.revoked_at.is_(None),
-            )
-        )
-        downstream = list(result.scalars().all())
-
+        """Revoke all downstream delegations using iterative BFS to avoid N+1."""
         count = 0
-        for d in downstream:
-            d.revoked_at = now
-            count += 1
-            count += await self._cascade_revoke(d.delegate_agent_id, now)
+        queue = [agent_id]
+
+        while queue:
+            current_ids = queue
+            queue = []
+
+            result = await self.session.execute(
+                select(Delegation).where(
+                    Delegation.delegator_agent_id.in_(current_ids),
+                    Delegation.revoked_at.is_(None),
+                )
+            )
+            downstream = list(result.scalars().all())
+
+            for d in downstream:
+                d.revoked_at = now
+                count += 1
+                queue.append(d.delegate_agent_id)
+
         return count

@@ -1,14 +1,14 @@
 """Pytest configuration and fixtures."""
 
-import asyncio
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from typing import Any
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
+
+import os
 
 from agentauth.core.database import BaseModel, get_session
 from agentauth.main import create_app
@@ -17,18 +17,11 @@ from agentauth.models.signing_key import KeyAlgorithm, SigningKey
 from agentauth.services.crypto import CryptoService
 
 
-# Test database URL - use a separate test database
-TEST_DATABASE_URL = (
-    "postgresql+asyncpg://agentauth:agentauth_dev_password@localhost:5432/agentauth_test"
+# Test database URL — override via TEST_DATABASE_URL env var to match your environment
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://agentauth:agentauth_dev_password@localhost:5432/agentauth_test",
 )
-
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="function")

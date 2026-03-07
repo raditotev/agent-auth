@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.core.database import get_session
@@ -209,14 +209,19 @@ async def create_agent(
     "",
     response_model=AgentListResponse,
     summary="List agents",
-    description="List agents with optional filtering by parent and status. "
-    "Supports pagination via limit and offset parameters.",
+    description=(
+        "List agents with optional filtering by parent and status. "
+        "Results are scoped to the caller's subtree — root agents see all agents, "
+        "non-root agents see only their own descendants. "
+        "Supports pagination via limit and offset parameters."
+    ),
 )
 async def list_agents(
+    request: Request,
     identity_service: Annotated[IdentityService, Depends(get_identity_service)],
     parent_agent_id: UUID | None = Query(
         None,
-        description="Filter by parent agent ID (omit to list root agents)",
+        description="Filter by parent agent ID",
     ),
     status_filter: AgentStatus | None = Query(
         None,
@@ -226,13 +231,22 @@ async def list_agents(
     limit: int = Query(50, ge=1, le=100, description="Maximum results to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
 ) -> AgentListResponse:
-    """List agents with filtering and pagination."""
+    """List agents scoped to the caller's subtree."""
     try:
+        # Determine subtree restriction based on the authenticated agent's position.
+        # Root agents (trust_level=ROOT) see the entire agent tree.
+        # Non-root agents are restricted to their own descendants.
+        caller = getattr(request.state, "agent", None)
+        subtree_ids: list[UUID] | None = None
+        if caller is not None and not caller.is_root():
+            subtree_ids = await identity_service.get_subtree_agent_ids(caller.id)
+
         agents = await identity_service.list_agents(
             parent_agent_id=parent_agent_id,
             status=status_filter,
             limit=limit,
             offset=offset,
+            subtree_ids=subtree_ids,
         )
         return AgentListResponse(
             data=[agent_to_response(agent) for agent in agents],

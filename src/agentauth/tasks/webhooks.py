@@ -61,7 +61,10 @@ async def deliver_webhook(
             "delivered_at": time.time(),
         }
         payload_bytes = json.dumps(payload_with_meta, sort_keys=True).encode()
-        signature = _sign_payload(subscription.secret, payload_bytes)
+        from agentauth.config import settings
+        from agentauth.core.security import decrypt_secret
+        raw_secret = decrypt_secret(subscription.secret, settings.secret_key)
+        signature = _sign_payload(raw_secret, payload_bytes)
 
         headers = {
             "Content-Type": "application/json",

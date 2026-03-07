@@ -7,6 +7,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from sqlalchemy import select
 
+from agentauth.config import settings
+from agentauth.core.security import decrypt_secret
 from agentauth.models.signing_key import KeyAlgorithm, KeyStatus, SigningKey
 from agentauth.services.crypto import CryptoService
 
@@ -28,15 +30,18 @@ class TestCryptoService:
         assert key.key_id is not None
         assert len(key.key_id) == 32  # 16 bytes = 32 hex chars
 
-        # Verify private key
-        assert key.private_key_pem.startswith("-----BEGIN PRIVATE KEY-----")
+        # Verify private key is encrypted at rest (not raw PEM)
+        assert not key.private_key_pem.startswith("-----BEGIN PRIVATE KEY-----")
+        # Verify it can be decrypted back to valid PEM
+        decrypted_pem = decrypt_secret(key.private_key_pem, settings.secret_key)
+        assert decrypted_pem.startswith("-----BEGIN PRIVATE KEY-----")
         private_key = serialization.load_pem_private_key(
-            key.private_key_pem.encode("utf-8"),
+            decrypted_pem.encode("utf-8"),
             password=None,
         )
         assert isinstance(private_key, rsa.RSAPrivateKey)
 
-        # Verify public key
+        # Verify public key (not encrypted — needed for JWKS)
         assert key.public_key_pem.startswith("-----BEGIN PUBLIC KEY-----")
         public_key = serialization.load_pem_public_key(key.public_key_pem.encode("utf-8"))
         assert isinstance(public_key, rsa.RSAPublicKey)
@@ -59,15 +64,17 @@ class TestCryptoService:
         assert key.status == KeyStatus.ACTIVE
         assert key.key_id is not None
 
-        # Verify private key
-        assert key.private_key_pem.startswith("-----BEGIN PRIVATE KEY-----")
+        # Verify private key is encrypted at rest
+        assert not key.private_key_pem.startswith("-----BEGIN PRIVATE KEY-----")
+        decrypted_pem = decrypt_secret(key.private_key_pem, settings.secret_key)
+        assert decrypted_pem.startswith("-----BEGIN PRIVATE KEY-----")
         private_key = serialization.load_pem_private_key(
-            key.private_key_pem.encode("utf-8"),
+            decrypted_pem.encode("utf-8"),
             password=None,
         )
         assert isinstance(private_key, ec.EllipticCurvePrivateKey)
 
-        # Verify public key
+        # Verify public key (not encrypted)
         assert key.public_key_pem.startswith("-----BEGIN PUBLIC KEY-----")
         public_key = serialization.load_pem_public_key(key.public_key_pem.encode("utf-8"))
         assert isinstance(public_key, ec.EllipticCurvePublicKey)

@@ -3,7 +3,7 @@
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -84,13 +84,34 @@ class IdentityService:
                 f"Agent with name '{data.name}' already exists under parent {data.parent_agent_id}"
             )
 
-        # Determine child depth and validate against parent's max_child_depth
-        # This is a simplified check - in production you'd compute the full chain depth
-        # For now we just ensure parent allows at least 1 level of children
+        # Compute actual depth from root by walking up the parent chain
+        depth = 0
+        current = parent
+        visited: set = {current.id}
+        while current.parent_agent_id is not None:
+            result = await self.session.execute(
+                select(Agent).where(Agent.id == current.parent_agent_id)
+            )
+            ancestor = result.scalar_one_or_none()
+            if ancestor is None or ancestor.id in visited:
+                break
+            visited.add(ancestor.id)
+            depth += 1
+            current = ancestor
+
+        # Check the immediate parent allows children and depth hasn't exceeded root limit
         if parent.max_child_depth < 1:
             raise ValueError(
                 f"Parent agent {data.parent_agent_id} cannot have child agents "
                 f"(max_child_depth={parent.max_child_depth})"
+            )
+
+        # Validate against root agent's max_child_depth
+        root = current
+        if depth + 1 > root.max_child_depth:
+            raise ValueError(
+                f"Creating this child would exceed the root agent's max depth of "
+                f"{root.max_child_depth} (current depth: {depth})"
             )
 
         # Create child agent
@@ -129,23 +150,48 @@ class IdentityService:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_subtree_agent_ids(self, root_id: UUID) -> list[UUID]:
+        """
+        Return all agent IDs in the subtree rooted at root_id (inclusive).
+
+        Uses a recursive CTE to efficiently traverse the self-referencing
+        parent_agent_id hierarchy.
+        """
+        sql = text("""
+            WITH RECURSIVE subtree AS (
+                SELECT id FROM agents WHERE id = :root_id
+                UNION ALL
+                SELECT a.id FROM agents a
+                INNER JOIN subtree s ON a.parent_agent_id = s.id
+            )
+            SELECT id FROM subtree
+        """)
+        result = await self.session.execute(sql, {"root_id": root_id})
+        return [row[0] for row in result.fetchall()]
+
     async def list_agents(
         self,
         parent_agent_id: UUID | None = None,
         status: AgentStatus | None = None,
         limit: int = 50,
         offset: int = 0,
+        subtree_ids: list[UUID] | None = None,
     ) -> list[Agent]:
         """
         List agents with optional filtering.
 
         Args:
-            parent_agent_id: Filter by parent agent (None = root agents only)
+            parent_agent_id: Filter by parent agent
             status: Filter by status
             limit: Maximum number of results
             offset: Offset for pagination
+            subtree_ids: If provided, only return agents whose IDs are in this set
         """
         stmt = select(Agent).order_by(Agent.created_at.desc())
+
+        # Subtree scope — restricts results to the caller's hierarchy
+        if subtree_ids is not None:
+            stmt = stmt.where(Agent.id.in_(subtree_ids))
 
         # Filter by parent
         if parent_agent_id is not None:
@@ -177,9 +223,12 @@ class IdentityService:
         if not agent:
             return None
 
-        # Update only provided fields
+        # Update only provided fields from the allowed set
+        _UPDATABLE_FIELDS = {"name", "description", "homepage_url", "public_key", "max_child_depth", "agent_metadata"}
         update_data = data.model_dump(exclude_unset=True, by_alias=False)
         for key, value in update_data.items():
+            if key not in _UPDATABLE_FIELDS:
+                continue
             if key == "homepage_url" and value is not None:
                 value = str(value)
             setattr(agent, key, value)

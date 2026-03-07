@@ -1,5 +1,6 @@
 """Token service for JWT minting, validation, and management."""
 
+import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.config import settings
 from agentauth.core.exceptions import TokenError
+from agentauth.core.security import decrypt_secret
 from agentauth.models.agent import Agent, AgentType, TrustLevel
 from agentauth.models.signing_key import KeyAlgorithm, SigningKey
 from agentauth.schemas.token import TokenClaims, TokenMetadata, TokenResponse, TokenValidationResult
@@ -184,9 +186,10 @@ class TokenService:
             TokenError: If signing fails
         """
         try:
-            # Load private key from PEM
+            # Decrypt private key from storage and load PEM
+            private_pem = decrypt_secret(signing_key.private_key_pem, settings.secret_key)
             private_key_obj = serialization.load_pem_private_key(
-                signing_key.private_key_pem.encode("utf-8"),
+                private_pem.encode("utf-8"),
                 password=None,
             )
 
@@ -402,8 +405,9 @@ class TokenService:
 
         redis_client = get_redis_client()
 
-        # Generate cache key from token (use last 32 chars to avoid huge keys)
-        cache_key = f"introspection:{token[-32:]}"
+        # Generate cache key from token hash (avoids collision from suffix matching)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+        cache_key = f"introspection:{token_hash}"
 
         # Try cache first if enabled
         if use_cache:

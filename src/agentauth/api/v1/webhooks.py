@@ -5,12 +5,14 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentauth.config import settings
 from agentauth.core.database import get_session
+from agentauth.core.security import encrypt_secret
 from agentauth.models.webhook import WebhookDeliveryLog, WebhookSubscription
 
 logger = structlog.get_logger()
@@ -36,6 +38,7 @@ class WebhookSubscriptionResponse(BaseModel):
     url: str
     events: list[str]
     enabled: bool
+    secret: str | None = None  # Raw secret returned ONCE at creation; None thereafter
 
     model_config = {"from_attributes": True}
 
@@ -43,6 +46,7 @@ class WebhookSubscriptionResponse(BaseModel):
 @router.post("", response_model=WebhookSubscriptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_subscription(
     payload: WebhookSubscriptionCreate,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> WebhookSubscriptionResponse:
     """Register a webhook subscription."""
@@ -57,15 +61,19 @@ async def create_subscription(
             },
         )
 
-    # TODO: replace with authenticated agent_id from request state
-    from uuid import uuid4
-    agent_id = uuid4()
+    agent_id = getattr(request.state, "agent_id", None)
+    if agent_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "unauthorized", "error_description": "Authentication required"},
+        )
 
     secret = secrets.token_hex(32)
+    encrypted_secret = encrypt_secret(secret, settings.secret_key)
     subscription = WebhookSubscription(
         agent_id=agent_id,
         url=payload.url,
-        secret=secret,
+        secret=encrypted_secret,
         events=payload.events,
         enabled=True,
     )
@@ -73,8 +81,9 @@ async def create_subscription(
     await session.commit()
     await session.refresh(subscription)
 
-    # Return the secret once (never stored in plaintext after this point)
+    # Return the raw secret ONCE — it is stored encrypted and cannot be recovered later.
     response = WebhookSubscriptionResponse.model_validate(subscription)
+    response.secret = secret
     logger.info("Webhook subscription created", subscription_id=str(subscription.id))
     return response
 
@@ -83,10 +92,14 @@ async def create_subscription(
 async def list_subscriptions(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[WebhookSubscriptionResponse]:
-    """List all webhook subscriptions."""
+    """List all webhook subscriptions. The signing secret is never included in list responses."""
     result = await session.execute(select(WebhookSubscription).order_by(WebhookSubscription.created_at.desc()))
     subs = list(result.scalars().all())
-    return [WebhookSubscriptionResponse.model_validate(s) for s in subs]
+    # Never expose the encrypted secret in list responses
+    responses = [WebhookSubscriptionResponse.model_validate(s) for s in subs]
+    for r in responses:
+        r.secret = None
+    return responses
 
 
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)

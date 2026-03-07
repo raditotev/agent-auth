@@ -1,10 +1,13 @@
 """Security utilities for hashing, encryption, and key generation."""
 
+import base64
+import hashlib
 import secrets
 import string
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from cryptography.fernet import Fernet
 
 # Argon2 hasher with secure defaults
 # time_cost=3, memory_cost=65536, parallelism=4
@@ -64,6 +67,44 @@ def verify_secret(hash: str, secret: str) -> bool:
         return True
     except VerifyMismatchError:
         return False
+
+
+def _get_fernet(secret_key: str) -> Fernet:
+    """Derive a Fernet instance from a secret key string."""
+    key = hashlib.sha256(secret_key.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def encrypt_secret(secret: str, secret_key: str) -> str:
+    """
+    Symmetrically encrypt a secret using the application secret key.
+
+    Use this for values that must be recovered server-side (e.g. webhook signing
+    secrets used for HMAC payload signing). Do NOT use for password-like values —
+    use hash_secret for those.
+
+    Args:
+        secret: Plain text secret to encrypt
+        secret_key: Application secret key (from settings)
+
+    Returns:
+        Fernet-encrypted string (URL-safe base64)
+    """
+    return _get_fernet(secret_key).encrypt(secret.encode()).decode()
+
+
+def decrypt_secret(encrypted: str, secret_key: str) -> str:
+    """
+    Decrypt a secret that was encrypted with encrypt_secret.
+
+    Args:
+        encrypted: Encrypted string produced by encrypt_secret
+        secret_key: Application secret key (from settings)
+
+    Returns:
+        Original plain text secret
+    """
+    return _get_fernet(secret_key).decrypt(encrypted.encode()).decode()
 
 
 def needs_rehash(hash: str) -> bool:

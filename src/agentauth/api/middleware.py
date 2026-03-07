@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from agentauth.core.database import get_session_maker
 from agentauth.core.exceptions import AuthenticationError
-from agentauth.models.agent import Agent, AgentStatus
+from agentauth.models.agent import Agent, AgentStatus, TrustLevel
 from agentauth.services.credential import CredentialService
 
 # Mapping of HTTP methods to authorization actions
@@ -28,6 +28,34 @@ logger = structlog.get_logger()
 
 # Paths that use stricter token-endpoint rate limits
 _TOKEN_PATHS = {"/api/v1/auth/token", "/api/v1/auth/token/introspect", "/api/v1/auth/token/revoke"}
+
+# Paths that require no authentication or authorization.
+# Shared by both AuthenticationMiddleware and AuthorizationMiddleware to keep
+# the two lists in sync.
+_EXEMPT_PATHS: frozenset[str] = frozenset({
+    "/health",
+    "/ready",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/api/v1/agents/bootstrap",   # Root agent self-registration
+    "/api/v1/agents/quickstart",  # Compound register+credential+token shortcut
+    "/api/v1/auth/jwks",          # Public JWKS for token verification
+    "/api/v1/auth/token",         # Token exchange — clients authenticate here
+    "/api/v1/auth/token/introspect",  # RFC 7662
+    "/api/v1/auth/token/revoke",      # RFC 7009
+    "/.well-known/agent-configuration",  # Discovery endpoint
+})
+
+# Path prefixes that are always exempt (e.g. interactive docs sub-paths)
+_EXEMPT_PREFIXES: tuple[str, ...] = ("/docs", "/redoc", "/openapi")
+
+
+def _is_exempt_path(path: str) -> bool:
+    """Return True if the path requires no authentication or authorization."""
+    if path in _EXEMPT_PATHS:
+        return True
+    return any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -84,29 +112,17 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
     (i.e. the path is exempt from auth), authorization is also skipped.
 
     Adds X-Authorization-Decision header to all responses for debugging.
-    """
 
-    # Paths exempt from authorization (same as auth exemptions)
-    EXEMPT_PATHS = {
-        "/health",
-        "/ready",
-        "/docs",
-        "/redoc",
-        "/openapi.json",
-        "/api/v1/agents/bootstrap",
-        "/api/v1/agents/quickstart",
-        "/api/v1/auth/jwks",
-        "/api/v1/auth/token",
-        "/api/v1/auth/token/introspect",
-        "/api/v1/auth/token/revoke",
-        "/.well-known/agent-configuration",
-    }
+    Note: Root agents (trust_level=ROOT) are trust anchors and bypass policy
+    enforcement by design. Policy DENY rules do NOT apply to root agents.
+    Use root agent credentials only for administrative operations.
+    """
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         """Evaluate authorization policy for the current request."""
-        if self._is_exempt_path(request.url.path):
+        if _is_exempt_path(request.url.path):
             return await call_next(request)
 
         agent = getattr(request.state, "agent", None)
@@ -114,6 +130,13 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             # Authentication already rejected this request; let it through to
             # surface the 401 from AuthenticationMiddleware.
             return await call_next(request)
+
+        # Root agents are trust anchors — they bypass policy enforcement.
+        # IMPORTANT: Policy deny rules cannot override root agent access.
+        if agent.trust_level == TrustLevel.ROOT:
+            response = await call_next(request)
+            response.headers["X-Authorization-Decision"] = "allow"
+            return response
 
         action = _METHOD_TO_ACTION.get(request.method.upper(), "write")
         resource = request.url.path
@@ -161,37 +184,17 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         response.headers["X-Authorization-Decision"] = decision
         return response
 
-    def _is_exempt_path(self, path: str) -> bool:
-        """Check if path is exempt from authorization."""
-        if path in self.EXEMPT_PATHS:
-            return True
-        exempt_prefixes = ("/docs", "/redoc", "/openapi")
-        return any(path.startswith(prefix) for prefix in exempt_prefixes)
-
-
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     """
-    Middleware to authenticate requests via X-Agent-Key header.
+    Middleware to authenticate requests via X-Agent-Key header or Bearer JWT.
 
-    Extracts API key, verifies it, resolves the associated agent,
+    Extracts API key or Bearer token, verifies it, resolves the associated agent,
     and injects agent into request state. Returns RFC 7807 Problem
     Details on authentication failure.
-    """
 
-    # Paths that don't require authentication
-    EXEMPT_PATHS = {
-        "/health",
-        "/ready",
-        "/docs",
-        "/redoc",
-        "/openapi.json",
-        "/api/v1/agents/bootstrap",  # Bootstrap endpoint for root agent self-registration
-        "/api/v1/agents/quickstart",  # Quickstart: register + credential + token in one call
-        "/api/v1/auth/jwks",  # JWKS endpoint - public keys for token verification
-        "/api/v1/auth/token",  # Token endpoint - where clients authenticate to get tokens
-        "/api/v1/auth/token/introspect",  # Token introspection endpoint (RFC 7662)
-        "/api/v1/auth/token/revoke",  # Token revocation endpoint (RFC 7009)
-    }
+    Exempt paths are defined by the module-level _EXEMPT_PATHS constant,
+    shared with AuthorizationMiddleware to keep them in sync.
+    """
 
     def __init__(
         self,
@@ -213,7 +216,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """Process request and authenticate if needed."""
         # Skip authentication for exempt paths
-        if self._is_exempt_path(request.url.path):
+        if _is_exempt_path(request.url.path):
             return await call_next(request)
 
         # Accept either X-Agent-Key (API key) or Authorization: Bearer (access token)
@@ -302,16 +305,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-    def _is_exempt_path(self, path: str) -> bool:
-        """Check if path is exempt from authentication."""
-        # Exact match
-        if path in self.EXEMPT_PATHS:
-            return True
-
-        # Prefix match for documentation
-        exempt_prefixes = ("/docs", "/redoc", "/openapi")
-        return any(path.startswith(prefix) for prefix in exempt_prefixes)
-
     async def _verify_api_key(self, api_key: str) -> Agent | None:
         """
         Verify API key and return associated agent.
@@ -374,32 +367,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
             agent_result = await session.execute(select(Agent).where(Agent.id == agent_id))
             return agent_result.scalar_one_or_none()
-
-    def _authorization_error_response(
-        self,
-        detail: str,
-        instance: str,
-        policy_id: str | None = None,
-        policy_name: str | None = None,
-    ) -> JSONResponse:
-        """Create RFC 7807 Problem Details response for authorization failures."""
-        problem_detail: dict[str, Any] = {
-            "type": "https://agentauth.dev/problems/access-denied",
-            "title": "Access Denied",
-            "status": status.HTTP_403_FORBIDDEN,
-            "detail": detail,
-            "instance": instance,
-        }
-        if policy_id:
-            problem_detail["policy_id"] = policy_id
-        if policy_name:
-            problem_detail["policy_name"] = policy_name
-
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content=problem_detail,
-            headers={"Content-Type": "application/problem+json"},
-        )
 
     def _authentication_error_response(
         self,

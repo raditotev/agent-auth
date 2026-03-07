@@ -55,7 +55,7 @@ class AuthorizationService:
         ctx = context or {}
 
         # Try cache first
-        cached = await self._get_cached_decision(agent_id, action, resource)
+        cached = await self._get_cached_decision(agent_id, action, resource, ctx)
         if cached is not None:
             return cached
 
@@ -109,7 +109,7 @@ class AuthorizationService:
             reason=result.reason,
         )
 
-        await self._cache_decision(agent_id, action, resource, result)
+        await self._cache_decision(agent_id, action, resource, ctx, result)
         return result
 
     async def _load_policies(self) -> list[Policy]:
@@ -212,17 +212,26 @@ class AuthorizationService:
 
         return True
 
+    @staticmethod
+    def _context_hash(context: dict) -> str:
+        """Generate a short hash of the context for cache key inclusion."""
+        import hashlib
+        ctx_str = str(sorted(context.items())) if context else ""
+        return hashlib.md5(ctx_str.encode()).hexdigest()[:8]
+
     async def _get_cached_decision(
         self,
         agent_id: UUID,
         action: str,
         resource: str,
+        context: dict | None = None,
     ) -> PolicyEvaluateResponse | None:
         """Try to retrieve a cached authorization decision from Redis."""
         try:
             from agentauth.core.redis import get_redis_client
             redis_client = get_redis_client()
-            cache_key = f"authz:{agent_id}:{action}:{resource}"
+            ctx_hash = self._context_hash(context) if context else "none"
+            cache_key = f"authz:{agent_id}:{action}:{resource}:{ctx_hash}"
             cached_json = await redis_client.get_json(cache_key)
             if cached_json is not None:
                 logger.debug("Authorization decision cache hit", cache_key=cache_key)
@@ -236,13 +245,15 @@ class AuthorizationService:
         agent_id: UUID,
         action: str,
         resource: str,
+        context: dict | None,
         result: PolicyEvaluateResponse,
     ) -> None:
         """Cache the authorization decision in Redis."""
         try:
             from agentauth.core.redis import get_redis_client
             redis_client = get_redis_client()
-            cache_key = f"authz:{agent_id}:{action}:{resource}"
+            ctx_hash = self._context_hash(context) if context else "none"
+            cache_key = f"authz:{agent_id}:{action}:{resource}:{ctx_hash}"
             await redis_client.set_json(
                 cache_key,
                 result.model_dump(mode="json"),

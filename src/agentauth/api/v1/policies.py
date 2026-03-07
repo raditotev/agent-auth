@@ -98,67 +98,6 @@ async def list_policies(
     )
 
 
-@router.get("/{policy_id}", response_model=PolicyResponse)
-async def get_policy(
-    policy_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> PolicyResponse:
-    """Get a policy by ID."""
-    result = await session.execute(select(Policy).where(Policy.id == policy_id))
-    policy = result.scalar_one_or_none()
-    if policy is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "not_found", "error_description": "Policy not found"},
-        )
-    return PolicyResponse.model_validate(policy)
-
-
-@router.put("/{policy_id}", response_model=PolicyResponse)
-async def update_policy(
-    policy_id: UUID,
-    payload: PolicyUpdate,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> PolicyResponse:
-    """Update an existing policy."""
-    result = await session.execute(select(Policy).where(Policy.id == policy_id))
-    policy = result.scalar_one_or_none()
-    if policy is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "not_found", "error_description": "Policy not found"},
-        )
-
-    update_data = payload.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(policy, field, value)
-
-    await session.commit()
-    await session.refresh(policy)
-    await _invalidate_policy_cache()
-    logger.info("Policy updated", policy_id=str(policy.id))
-    return PolicyResponse.model_validate(policy)
-
-
-@router.delete("/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_policy(
-    policy_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> None:
-    """Delete a policy."""
-    result = await session.execute(select(Policy).where(Policy.id == policy_id))
-    policy = result.scalar_one_or_none()
-    if policy is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "not_found", "error_description": "Policy not found"},
-        )
-    await session.delete(policy)
-    await session.commit()
-    await _invalidate_policy_cache()
-    logger.info("Policy deleted", policy_id=str(policy_id))
-
-
 @router.get(
     "/syntax",
     summary="Policy syntax reference",
@@ -283,6 +222,67 @@ async def policy_syntax() -> dict:
             },
         },
     }
+
+
+@router.get("/{policy_id}", response_model=PolicyResponse)
+async def get_policy(
+    policy_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PolicyResponse:
+    """Get a policy by ID."""
+    result = await session.execute(select(Policy).where(Policy.id == policy_id))
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "not_found", "error_description": "Policy not found"},
+        )
+    return PolicyResponse.model_validate(policy)
+
+
+@router.put("/{policy_id}", response_model=PolicyResponse)
+async def update_policy(
+    policy_id: UUID,
+    payload: PolicyUpdate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PolicyResponse:
+    """Update an existing policy."""
+    result = await session.execute(select(Policy).where(Policy.id == policy_id))
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "not_found", "error_description": "Policy not found"},
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(policy, field, value)
+
+    await session.commit()
+    await session.refresh(policy)
+    await _invalidate_policy_cache()
+    logger.info("Policy updated", policy_id=str(policy.id))
+    return PolicyResponse.model_validate(policy)
+
+
+@router.delete("/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_policy(
+    policy_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """Delete a policy."""
+    result = await session.execute(select(Policy).where(Policy.id == policy_id))
+    policy = result.scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "not_found", "error_description": "Policy not found"},
+        )
+    await session.delete(policy)
+    await session.commit()
+    await _invalidate_policy_cache()
+    logger.info("Policy deleted", policy_id=str(policy_id))
 
 
 @router.post("/evaluate", response_model=PolicyEvaluateResponse)
