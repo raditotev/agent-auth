@@ -12,7 +12,7 @@ As AI agents proliferate, a critical infrastructure gap has emerged: agents have
 
 **What it provides:**
 
-- **Agent Identity** — Cryptographically verifiable credentials that uniquely identify an agent, its version, its owner, and its capabilities
+- **Agent Identity** — Cryptographically verifiable credentials that uniquely identify an agent, its version, and its capabilities
 - **Delegated Authorization** — Scoped, time-limited, revocable permissions delegated from parent agents or root authorities
 - **Machine-to-Machine Auth Flows** — OAuth-like grant types purpose-built for agents calling APIs, tools, and other agents
 - **API Key Lifecycle Management** — Issuance, rotation, revocation, and audit of agent API keys

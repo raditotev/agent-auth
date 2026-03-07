@@ -96,17 +96,17 @@ class TestCredentialService:
         with pytest.raises(NotFoundError):
             await service.get_credential(uuid7())
 
-    async def test_get_credential_by_prefix(
+    async def test_get_credentials_by_prefix(
         self, db_session: AsyncSession, root_agent: Agent
     ) -> None:
-        """Test getting credential by prefix."""
+        """Test getting credentials by prefix."""
         service = CredentialService(db_session)
 
         credential, raw_key = await service.create_credential(agent_id=root_agent.id)
 
-        retrieved = await service.get_credential_by_prefix(credential.prefix)
-        assert retrieved is not None
-        assert retrieved.id == credential.id
+        results = await service.get_credentials_by_prefix(credential.prefix)
+        assert len(results) >= 1
+        assert any(r.id == credential.id for r in results)
 
     async def test_list_credentials_by_agent(
         self, db_session: AsyncSession, root_agent: Agent, child_agent: Agent

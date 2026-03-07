@@ -170,6 +170,64 @@ class RedisClient:
             logger.warning("Failed to serialize JSON for Redis", key=key, error=str(e))
             return False
 
+    async def zremrangebyscore(self, key: str, min_score: str | float, max_score: str | float) -> int:
+        """Remove sorted set members with scores between min and max."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        try:
+            return await self._client.zremrangebyscore(key, min_score, max_score)
+        except Exception as e:
+            logger.warning("Redis ZREMRANGEBYSCORE failed", key=key, error=str(e))
+            return 0
+
+    async def zcard(self, key: str) -> int:
+        """Return the number of members in a sorted set."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        try:
+            return await self._client.zcard(key)
+        except Exception as e:
+            logger.warning("Redis ZCARD failed", key=key, error=str(e))
+            return 0
+
+    async def zadd(self, key: str, mapping: dict[str, float]) -> int:
+        """Add members to a sorted set."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        try:
+            return await self._client.zadd(key, mapping)
+        except Exception as e:
+            logger.warning("Redis ZADD failed", key=key, error=str(e))
+            return 0
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        """Set a key's time to live in seconds."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        try:
+            return bool(await self._client.expire(key, seconds))
+        except Exception as e:
+            logger.warning("Redis EXPIRE failed", key=key, error=str(e))
+            return False
+
+    async def delete_pattern(self, pattern: str) -> int:
+        """Delete all keys matching a glob pattern. Returns count of deleted keys."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        count = 0
+        try:
+            async for key in self._client.scan_iter(pattern):
+                await self._client.delete(key)
+                count += 1
+        except Exception as e:
+            logger.warning("Redis DELETE_PATTERN failed", pattern=pattern, error=str(e))
+        return count
+
 
 # Global Redis client instance
 _redis_client: RedisClient | None = None

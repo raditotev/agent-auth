@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,10 +24,21 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/policies", tags=["Policies"])
 
 
+async def _invalidate_policy_cache() -> None:
+    """Clear all cached authorization decisions after a policy change."""
+    try:
+        from agentauth.core.redis import get_redis_client
+        redis_client = get_redis_client()
+        await redis_client.delete_pattern("authz:*")
+    except Exception as e:
+        logger.warning("Failed to invalidate policy cache", error=str(e))
+
+
 @router.post("", response_model=PolicyResponse, status_code=status.HTTP_201_CREATED)
 async def create_policy(
     payload: PolicyCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
 ) -> PolicyResponse:
     """Create a new authorization policy."""
     # Validate: deny policies need at least subjects or resources defined
@@ -40,11 +51,15 @@ async def create_policy(
             },
         )
 
-    # created_by_agent_id placeholder — in production this comes from the authenticated agent
-    # For now accept it from the request subjects field or use a sentinel value
-    # TODO: replace with authenticated agent ID once auth middleware is integrated
-    from uuid import uuid4
-    actor_id = uuid4()  # Will be replaced with real agent identity in Task 3.4
+    actor_id = getattr(request.state, "agent_id", None)
+    if actor_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "unauthorized",
+                "error_description": "Authentication required to create policies",
+            },
+        )
 
     policy = Policy(
         created_by_agent_id=actor_id,
@@ -61,6 +76,7 @@ async def create_policy(
     session.add(policy)
     await session.commit()
     await session.refresh(policy)
+    await _invalidate_policy_cache()
     logger.info("Policy created", policy_id=str(policy.id), name=policy.name)
     return PolicyResponse.model_validate(policy)
 
@@ -119,6 +135,7 @@ async def update_policy(
 
     await session.commit()
     await session.refresh(policy)
+    await _invalidate_policy_cache()
     logger.info("Policy updated", policy_id=str(policy.id))
     return PolicyResponse.model_validate(policy)
 
@@ -138,6 +155,7 @@ async def delete_policy(
         )
     await session.delete(policy)
     await session.commit()
+    await _invalidate_policy_cache()
     logger.info("Policy deleted", policy_id=str(policy_id))
 
 

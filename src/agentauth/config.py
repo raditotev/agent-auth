@@ -58,6 +58,25 @@ class Settings(BaseSettings):
         description="CORS allowed origins",
     )
 
+    def validate_production_settings(self) -> list[str]:
+        """Check for insecure defaults that must be changed in production.
+
+        Returns a list of warning messages. Raises ValueError in production
+        if critical defaults are still in place.
+        """
+        warnings: list[str] = []
+        if self.secret_key == "dev-secret-key-change-in-production":
+            warnings.append(
+                "SECRET_KEY is using the default dev value. "
+                "Set a strong, unique SECRET_KEY environment variable."
+            )
+        if self.environment == "production" and warnings:
+            raise ValueError(
+                "Refusing to start in production with insecure defaults: "
+                + "; ".join(warnings)
+            )
+        return warnings
+
 
 # Global settings instance
 settings = Settings()

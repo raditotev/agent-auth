@@ -57,6 +57,25 @@ class CredentialResponse(BaseModel):
         "populate_by_name": True,
     }
 
+    @classmethod
+    def from_model(cls, credential: Any) -> "CredentialResponse":
+        """Create a CredentialResponse from a Credential ORM model."""
+        return cls(
+            id=credential.id,
+            agent_id=credential.agent_id,
+            type=credential.type,
+            prefix=credential.prefix,
+            scopes=credential.scopes,
+            expires_at=credential.expires_at,
+            last_used_at=credential.last_used_at,
+            last_rotated_at=credential.last_rotated_at,
+            revoked_at=credential.revoked_at,
+            credential_metadata=credential.credential_metadata,
+            created_at=credential.created_at,
+            updated_at=credential.updated_at,
+            is_valid=credential.is_valid(),
+        )
+
 
 class CredentialCreateResponse(BaseModel):
     """Schema for credential creation response (includes raw key ONCE)."""

@@ -1,5 +1,6 @@
 """Sliding window rate limiting using Redis (Task 4.4)."""
 
+import secrets
 from datetime import UTC, datetime
 
 import structlog
@@ -42,10 +43,10 @@ async def check_rate_limit(
         redis_key = f"ratelimit:{endpoint_type}:{identifier}"
 
         # Remove entries outside the window
-        await redis_client.client.zremrangebyscore(redis_key, "-inf", window_start)
+        await redis_client.zremrangebyscore(redis_key, "-inf", window_start)
 
         # Count requests in the current window
-        current_count = await redis_client.client.zcard(redis_key)
+        current_count = await redis_client.zcard(redis_key)
 
         headers = {
             "X-RateLimit-Limit": str(limit),
@@ -64,10 +65,10 @@ async def check_rate_limit(
             )
             return False, headers
 
-        # Record this request
-        await redis_client.client.zadd(redis_key, {f"{now_ts}:{id(object())}": now_ts})
+        # Record this request with a stable unique member key
+        await redis_client.zadd(redis_key, {f"{now_ts}:{secrets.token_hex(8)}": now_ts})
         # Set key TTL to auto-expire old entries
-        await redis_client.client.expire(redis_key, RATE_LIMIT_WINDOW_SECONDS * 2)
+        await redis_client.expire(redis_key, RATE_LIMIT_WINDOW_SECONDS * 2)
 
         return True, headers
 

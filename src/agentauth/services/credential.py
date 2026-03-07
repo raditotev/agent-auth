@@ -123,20 +123,23 @@ class CredentialService:
 
         return credential
 
-    async def get_credential_by_prefix(self, prefix: str) -> Credential | None:
+    async def get_credentials_by_prefix(self, prefix: str) -> list[Credential]:
         """
-        Get credential by prefix.
+        Get all credentials matching a prefix.
+
+        Multiple credentials can share the same 8-character prefix (collision).
+        Callers must verify the hash against each candidate.
 
         Args:
             prefix: Key prefix
 
         Returns:
-            Credential object or None if not found
+            List of matching Credential objects
         """
         result = await self.session.execute(
             select(Credential).where(Credential.prefix == prefix)
         )
-        return result.scalar_one_or_none()
+        return list(result.scalars().all())
 
     async def list_credentials(
         self,
@@ -175,54 +178,45 @@ class CredentialService:
         """
         Verify an API key and return associated credential.
 
+        Handles prefix collisions by checking the hash against all
+        credentials sharing the same prefix.
+
         Args:
             raw_key: Raw API key to verify
 
         Returns:
             Credential object if valid, None otherwise
         """
-        # Extract prefix to find credential
+        # Extract prefix to find candidate credentials
         prefix = get_key_prefix(raw_key, length=8)
 
-        credential = await self.get_credential_by_prefix(prefix)
+        candidates = await self.get_credentials_by_prefix(prefix)
 
-        if not credential:
+        if not candidates:
             logger.warning("credential_not_found", prefix=prefix)
             return None
 
-        # Check if credential is valid (not expired or revoked)
-        if not credential.is_valid():
-            logger.warning(
-                "credential_invalid",
-                credential_id=str(credential.id),
-                prefix=prefix,
-                revoked=credential.revoked_at is not None,
-                expired=credential.expires_at is not None
-                and datetime.now(UTC) > credential.expires_at,
-            )
-            return None
+        # Check each candidate for a hash match
+        for credential in candidates:
+            # Skip invalid credentials early
+            if not credential.is_valid():
+                continue
 
-        # Verify hash
-        if not verify_secret(credential.hash, raw_key):
-            logger.warning(
-                "credential_verification_failed",
-                credential_id=str(credential.id),
-                prefix=prefix,
-            )
-            return None
+            if verify_secret(credential.hash, raw_key):
+                # Update last_used_at
+                credential.last_used_at = datetime.now(UTC)
+                await self.session.flush()
 
-        # Update last_used_at
-        credential.last_used_at = datetime.now(UTC)
-        await self.session.flush()
+                logger.info(
+                    "credential_verified",
+                    credential_id=str(credential.id),
+                    agent_id=str(credential.agent_id),
+                    prefix=prefix,
+                )
+                return credential
 
-        logger.info(
-            "credential_verified",
-            credential_id=str(credential.id),
-            agent_id=str(credential.agent_id),
-            prefix=prefix,
-        )
-
-        return credential
+        logger.warning("credential_verification_failed", prefix=prefix)
+        return None
 
     async def revoke_credential(
         self,

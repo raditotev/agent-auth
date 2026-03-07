@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,11 +27,16 @@ router = APIRouter(prefix="/delegations", tags=["Delegations"])
 async def create_delegation(
     payload: DelegationCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
 ) -> DelegationResponse:
     """Create a new delegation from the authenticated agent to a delegate."""
-    # TODO: replace with authenticated agent_id from request state (Task 3.4)
-    from uuid import uuid4
-    delegator_id = uuid4()  # placeholder until auth middleware injects agent
+    agent = getattr(request.state, "agent", None)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "unauthorized", "error_description": "Authentication required to create delegations"},
+        )
+    delegator_id = agent.id
 
     service = DelegationService(session)
     try:
@@ -47,12 +52,12 @@ async def create_delegation(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": "invalid_delegation", "error_description": str(e)},
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "unauthorized", "error_description": str(e)},
-        )
+        ) from e
     return DelegationResponse.from_model(delegation)
 
 

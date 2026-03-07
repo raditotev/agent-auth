@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.core.database import get_session
@@ -37,6 +37,7 @@ router = APIRouter(prefix="/credentials", tags=["credentials"])
 async def create_credential(
     credential_data: CredentialCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
 ) -> CredentialCreateResponse:
     """
     Create a new credential.
@@ -45,6 +46,7 @@ async def create_credential(
     """
     try:
         service = CredentialService(session)
+        actor_id = getattr(request.state, "agent_id", None)
 
         credential, raw_key = await service.create_credential(
             agent_id=credential_data.agent_id,
@@ -52,29 +54,11 @@ async def create_credential(
             scopes=credential_data.scopes,
             expires_at=credential_data.expires_at,
             metadata=credential_data.credential_metadata,
-            # TODO: Extract actor_id from authenticated request context
-            actor_id=None,
-        )
-
-        # Convert to response model
-        credential_response = CredentialResponse(
-            id=credential.id,
-            agent_id=credential.agent_id,
-            type=credential.type,
-            prefix=credential.prefix,
-            scopes=credential.scopes,
-            expires_at=credential.expires_at,
-            last_used_at=credential.last_used_at,
-            last_rotated_at=credential.last_rotated_at,
-            revoked_at=credential.revoked_at,
-            credential_metadata=credential.credential_metadata,
-            created_at=credential.created_at,
-            updated_at=credential.updated_at,
-            is_valid=credential.is_valid(),
+            actor_id=actor_id,
         )
 
         return CredentialCreateResponse(
-            credential=credential_response,
+            credential=CredentialResponse.from_model(credential),
             raw_key=raw_key,
         )
 
@@ -118,30 +102,10 @@ async def list_credentials(
             offset=offset,
         )
 
-        # Convert to response models
-        credential_responses = [
-            CredentialResponse(
-                id=cred.id,
-                agent_id=cred.agent_id,
-                type=cred.type,
-                prefix=cred.prefix,
-                scopes=cred.scopes,
-                expires_at=cred.expires_at,
-                last_used_at=cred.last_used_at,
-                last_rotated_at=cred.last_rotated_at,
-                revoked_at=cred.revoked_at,
-                credential_metadata=cred.credential_metadata,
-                created_at=cred.created_at,
-                updated_at=cred.updated_at,
-                is_valid=cred.is_valid(),
-            )
-            for cred in credentials
-        ]
-
         return CredentialListResponse(
-            data=credential_responses,
+            data=[CredentialResponse.from_model(cred) for cred in credentials],
             meta={
-                "total": len(credential_responses),
+                "total": len(credentials),
                 "limit": limit,
                 "offset": offset,
                 "agent_id": str(agent_id) if agent_id else None,
@@ -176,24 +140,8 @@ async def get_credential(
 
         credential = await service.get_credential(credential_id)
 
-        credential_response = CredentialResponse(
-            id=credential.id,
-            agent_id=credential.agent_id,
-            type=credential.type,
-            prefix=credential.prefix,
-            scopes=credential.scopes,
-            expires_at=credential.expires_at,
-            last_used_at=credential.last_used_at,
-            last_rotated_at=credential.last_rotated_at,
-            revoked_at=credential.revoked_at,
-            credential_metadata=credential.credential_metadata,
-            created_at=credential.created_at,
-            updated_at=credential.updated_at,
-            is_valid=credential.is_valid(),
-        )
-
         return CredentialDetailResponse(
-            data=credential_response,
+            data=CredentialResponse.from_model(credential),
             meta={"credential_id": str(credential_id)},
         )
 
@@ -226,6 +174,7 @@ async def get_credential(
 async def rotate_credential(
     credential_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
 ) -> CredentialRotateResponse:
     """
     Rotate credential.
@@ -234,48 +183,16 @@ async def rotate_credential(
     """
     try:
         service = CredentialService(session)
+        actor_id = getattr(request.state, "agent_id", None)
 
         old_cred, new_cred, raw_key = await service.rotate_credential(
             credential_id=credential_id,
-            # TODO: Extract actor_id from authenticated request context
-            actor_id=None,
-        )
-
-        old_response = CredentialResponse(
-            id=old_cred.id,
-            agent_id=old_cred.agent_id,
-            type=old_cred.type,
-            prefix=old_cred.prefix,
-            scopes=old_cred.scopes,
-            expires_at=old_cred.expires_at,
-            last_used_at=old_cred.last_used_at,
-            last_rotated_at=old_cred.last_rotated_at,
-            revoked_at=old_cred.revoked_at,
-            credential_metadata=old_cred.credential_metadata,
-            created_at=old_cred.created_at,
-            updated_at=old_cred.updated_at,
-            is_valid=old_cred.is_valid(),
-        )
-
-        new_response = CredentialResponse(
-            id=new_cred.id,
-            agent_id=new_cred.agent_id,
-            type=new_cred.type,
-            prefix=new_cred.prefix,
-            scopes=new_cred.scopes,
-            expires_at=new_cred.expires_at,
-            last_used_at=new_cred.last_used_at,
-            last_rotated_at=new_cred.last_rotated_at,
-            revoked_at=new_cred.revoked_at,
-            credential_metadata=new_cred.credential_metadata,
-            created_at=new_cred.created_at,
-            updated_at=new_cred.updated_at,
-            is_valid=new_cred.is_valid(),
+            actor_id=actor_id,
         )
 
         return CredentialRotateResponse(
-            old_credential=old_response,
-            new_credential=new_response,
+            old_credential=CredentialResponse.from_model(old_cred),
+            new_credential=CredentialResponse.from_model(new_cred),
             raw_key=raw_key,
         )
 
@@ -305,6 +222,7 @@ async def rotate_credential(
 async def revoke_credential(
     credential_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
 ) -> CredentialDetailResponse:
     """
     Revoke credential.
@@ -313,31 +231,15 @@ async def revoke_credential(
     """
     try:
         service = CredentialService(session)
+        actor_id = getattr(request.state, "agent_id", None)
 
         credential = await service.revoke_credential(
             credential_id=credential_id,
-            # TODO: Extract actor_id from authenticated request context
-            actor_id=None,
-        )
-
-        credential_response = CredentialResponse(
-            id=credential.id,
-            agent_id=credential.agent_id,
-            type=credential.type,
-            prefix=credential.prefix,
-            scopes=credential.scopes,
-            expires_at=credential.expires_at,
-            last_used_at=credential.last_used_at,
-            last_rotated_at=credential.last_rotated_at,
-            revoked_at=credential.revoked_at,
-            credential_metadata=credential.credential_metadata,
-            created_at=credential.created_at,
-            updated_at=credential.updated_at,
-            is_valid=credential.is_valid(),
+            actor_id=actor_id,
         )
 
         return CredentialDetailResponse(
-            data=credential_response,
+            data=CredentialResponse.from_model(credential),
             meta={
                 "credential_id": str(credential_id),
                 "message": "Credential revoked successfully",
