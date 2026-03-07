@@ -24,12 +24,18 @@ async def agent_configuration() -> JSONResponse:
 
     metadata = {
         "issuer": settings.issuer_url,
+        # Core endpoints
         "token_endpoint": f"{api_base}/auth/token",
         "token_introspection_endpoint": f"{api_base}/auth/token/introspect",
         "token_revocation_endpoint": f"{api_base}/auth/token/revoke",
         "jwks_uri": f"{api_base}/auth/jwks",
+        # Agent management
         "registration_endpoint": f"{api_base}/agents/bootstrap",
+        "quickstart_endpoint": f"{api_base}/agents/quickstart",
         "agent_registration_endpoint": f"{api_base}/agents",
+        # Scope & policy discovery
+        "scopes_endpoint": f"{api_base}/scopes",
+        "policy_syntax_endpoint": f"{api_base}/policies/syntax",
         "scopes_supported": [
             "agents.read", "agents.write", "agents.delete",
             "credentials.read", "credentials.write", "credentials.delete",
@@ -49,6 +55,11 @@ async def agent_configuration() -> JSONResponse:
         "token_endpoint_auth_methods_supported": [
             "client_secret_post",
         ],
+        # Token endpoint accepts both content types
+        "token_endpoint_content_types_supported": [
+            "application/x-www-form-urlencoded",
+            "application/json",
+        ],
         "response_types_supported": ["token"],
         "subject_types_supported": ["pairwise"],
         "id_token_signing_alg_values_supported": ["RS256", "ES256"],
@@ -58,6 +69,12 @@ async def agent_configuration() -> JSONResponse:
             "scopes", "agent_type", "trust_level",
             "parent_agent_id", "delegation_chain", "token_type",
         ],
+        # Token lifetime hints (in seconds)
+        "token_lifetimes": {
+            "access_token_seconds": settings.access_token_expire_minutes * 60,
+            "refresh_token_days": settings.refresh_token_expire_days,
+            "refresh_buffer_seconds": 60,
+        },
         "service_documentation": f"{base}/docs",
         "agent_types_supported": ["orchestrator", "autonomous", "assistant", "tool"],
         "trust_levels_supported": ["root", "delegated", "ephemeral"],

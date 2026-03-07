@@ -66,6 +66,9 @@ class TokenResponse(BaseModel):
     # Token metadata
     issued_at: datetime = Field(..., description="Token issuance timestamp")
     expires_at: datetime = Field(..., description="Access token expiration timestamp")
+    refresh_before: datetime = Field(
+        ..., description="Refresh deadline — refresh before this time (60s before expiry)"
+    )
 
     model_config = {
         "json_schema_extra": {

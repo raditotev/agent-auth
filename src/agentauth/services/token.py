@@ -166,6 +166,7 @@ class TokenService:
             scope=" ".join(token_scopes) if token_scopes else None,
             issued_at=issued_at,
             expires_at=expires_at,
+            refresh_before=expires_at - timedelta(seconds=60),
         )
 
     async def _sign_jwt(self, claims: dict[str, Any], signing_key: SigningKey) -> str:

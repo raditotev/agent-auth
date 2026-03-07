@@ -14,6 +14,7 @@ from agentauth.schemas.agent import (
     AgentCreate,
     AgentDetailResponse,
     AgentListResponse,
+    AgentQuickstartResponse,
     AgentResponse,
     AgentUpdate,
 )
@@ -49,6 +50,85 @@ def get_identity_service(
 ) -> IdentityService:
     """Dependency for getting identity service."""
     return IdentityService(session)
+
+
+@router.post(
+    "/quickstart",
+    response_model=AgentQuickstartResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Quickstart: register agent + get credentials in one call",
+    description=(
+        "Registers a root agent, issues an API key, and returns a ready-to-use access token "
+        "in a single request. Ideal for programmatic agent bootstrapping. "
+        "The API key is shown **once** — store it securely."
+    ),
+)
+async def quickstart(
+    data: AgentBootstrapCreate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    identity_service: Annotated[IdentityService, Depends(get_identity_service)],
+) -> AgentQuickstartResponse:
+    """
+    Compound bootstrap endpoint: register → credential → token in one round-trip.
+
+    Equivalent to:
+    1. POST /agents/bootstrap
+    2. POST /credentials
+    3. POST /auth/token (client_credentials)
+    """
+    from agentauth.models.credential import CredentialType
+    from agentauth.services.credential import CredentialService
+    from agentauth.services.token import TokenService
+
+    try:
+        # 1. Register root agent
+        agent = await identity_service.create_root_agent(data)
+
+        # 2. Issue an API key with all default scopes
+        credential_service = CredentialService(session)
+        credential, raw_key = await credential_service.create_credential(
+            agent_id=agent.id,
+            credential_type=CredentialType.API_KEY,
+            scopes=None,  # no restriction — use all available
+            expires_at=None,
+            metadata=None,
+            actor_id=agent.id,
+        )
+
+        # 3. Mint an access token
+        token_service = TokenService(session)
+        token_response = await token_service.mint_token(
+            agent=agent,
+            scopes=credential.scopes or [],
+        )
+
+        await session.commit()
+
+        logger.info(
+            "Agent quickstart completed",
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+        )
+
+        return AgentQuickstartResponse(
+            agent=agent_to_response(agent),
+            api_key=raw_key,
+            api_key_prefix=credential.prefix,
+            token=token_response,
+        )
+
+    except ValueError as e:
+        logger.warning("Quickstart failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error("Quickstart error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to complete agent quickstart",
+        ) from e
 
 
 @router.post(

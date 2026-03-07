@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl
 
 from agentauth.models.agent import AgentStatus, AgentType, TrustLevel
+from agentauth.schemas.credential import CredentialResponse
+from agentauth.schemas.token import TokenResponse
 
 
 class AgentBase(BaseModel):
@@ -87,3 +89,27 @@ class AgentDetailResponse(BaseModel):
 
     data: AgentResponse
     meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentQuickstartResponse(BaseModel):
+    """
+    Response for the /agents/quickstart endpoint.
+
+    Contains everything a new agent needs to start making authenticated requests
+    in a single call: agent identity, API key (shown once), and an access token.
+    """
+
+    agent: AgentResponse = Field(..., description="Registered root agent")
+    api_key: str = Field(
+        ...,
+        description="Full API key — SAVE THIS NOW, it will never be shown again",
+    )
+    api_key_prefix: str = Field(..., description="API key prefix for identification")
+    token: TokenResponse = Field(..., description="Ready-to-use access token")
+    message: str = Field(
+        default=(
+            "Agent registered successfully. "
+            "Save the api_key — it will never be shown again. "
+            "Use token.access_token in the Authorization: Bearer header."
+        )
+    )

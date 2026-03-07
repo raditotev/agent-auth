@@ -1,9 +1,9 @@
 """Authentication endpoints."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Depends, Form, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,28 @@ from agentauth.services.token import TokenService
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+async def _parse_token_body(request: Request) -> dict[str, Any]:
+    """
+    Parse token endpoint request body from either JSON or form-encoded.
+
+    Accepts:
+    - application/json: {"grant_type": "client_credentials", ...}
+    - application/x-www-form-urlencoded: grant_type=client_credentials&...
+    """
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            return await request.json()
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "invalid_request", "error_description": "Invalid JSON body"},
+            )
+    # Default: form-encoded (OAuth 2.0 standard)
+    form = await request.form()
+    return dict(form)
 
 
 @router.get("/jwks")
@@ -54,44 +76,62 @@ async def get_jwks(
     return jwks
 
 
-@router.post("/token", response_model=TokenResponse)
+@router.post(
+    "/token",
+    response_model=TokenResponse,
+    description=(
+        "OAuth 2.0 token endpoint. Accepts both `application/x-www-form-urlencoded` "
+        "(standard OAuth) and `application/json` request bodies."
+    ),
+)
 async def token_endpoint(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
-    grant_type: Annotated[str, Form()],
-    scope: Annotated[str | None, Form()] = None,
-    client_id: Annotated[str | None, Form()] = None,
-    client_secret: Annotated[str | None, Form()] = None,
-    refresh_token: Annotated[str | None, Form()] = None,
-    delegation_token: Annotated[str | None, Form()] = None,
 ) -> TokenResponse:
     """
     OAuth 2.0 token endpoint supporting multiple grant types.
 
+    Accepts **both** form-encoded and JSON request bodies:
+
+    ```json
+    {"grant_type": "client_credentials", "client_secret": "<key>", "scope": "api.read"}
+    ```
+
+    or form-encoded:
+
+    ```
+    grant_type=client_credentials&client_secret=<key>&scope=api.read
+    ```
+
     Supported grant types:
-    - client_credentials: Agent authenticates with API key or client_id + client_secret
-    - refresh_token: Exchange a refresh token for a new access + refresh token pair
-    - agent_delegation: Exchange a delegation token for a scoped access token
-
-    Args:
-        grant_type: The OAuth 2.0 grant type
-        scope: Space-separated list of requested scopes
-        client_id: Client/Agent identifier (for client_credentials)
-        client_secret: Client secret or API key (for client_credentials)
-        refresh_token: Refresh token (for refresh_token grant)
-        delegation_token: Delegation token from parent agent (for agent_delegation grant)
-
-    Returns:
-        TokenResponse containing access_token, refresh_token, and metadata
-
-    Raises:
-        HTTPException: 400 for unsupported grant types, 401 for authentication failures
+    - client_credentials: Agent authenticates with API key
+    - refresh_token: Exchange refresh token for new token pair
+    - agent_delegation: Exchange parent delegation token for scoped access
     """
+    body = await _parse_token_body(request)
+
+    grant_type = body.get("grant_type")
+    scope = body.get("scope")
+    client_id = body.get("client_id")
+    client_secret = body.get("client_secret")
+    refresh_token = body.get("refresh_token")
+    delegation_token = body.get("delegation_token")
+
     logger.info(
         "Token endpoint accessed",
         grant_type=grant_type,
         scope=scope,
         client_id=client_id,
     )
+
+    if not grant_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_request",
+                "error_description": "grant_type is required",
+            },
+        )
 
     if grant_type == "client_credentials":
         return await _handle_client_credentials(
@@ -117,7 +157,8 @@ async def token_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "unsupported_grant_type",
-                "error_description": f"Grant type '{grant_type}' is not supported",
+                "error_description": f"Grant type '{grant_type}' is not supported. "
+                f"Supported: client_credentials, refresh_token, agent_delegation",
             },
         )
 

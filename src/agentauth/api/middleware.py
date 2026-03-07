@@ -94,6 +94,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         "/redoc",
         "/openapi.json",
         "/api/v1/agents/bootstrap",
+        "/api/v1/agents/quickstart",
         "/api/v1/auth/jwks",
         "/api/v1/auth/token",
         "/api/v1/auth/token/introspect",
@@ -185,6 +186,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/redoc",
         "/openapi.json",
         "/api/v1/agents/bootstrap",  # Bootstrap endpoint for root agent self-registration
+        "/api/v1/agents/quickstart",  # Quickstart: register + credential + token in one call
         "/api/v1/auth/jwks",  # JWKS endpoint - public keys for token verification
         "/api/v1/auth/token",  # Token endpoint - where clients authenticate to get tokens
         "/api/v1/auth/token/introspect",  # Token introspection endpoint (RFC 7662)
@@ -214,25 +216,33 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if self._is_exempt_path(request.url.path):
             return await call_next(request)
 
-        # Extract API key from header
+        # Accept either X-Agent-Key (API key) or Authorization: Bearer (access token)
         api_key = request.headers.get("X-Agent-Key")
+        bearer_token: str | None = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            bearer_token = auth_header[len("Bearer "):]
 
-        if not api_key:
+        if not api_key and not bearer_token:
             logger.warning(
                 "authentication_failed",
-                reason="missing_api_key",
+                reason="missing_credentials",
                 path=request.url.path,
                 method=request.method,
             )
             return self._authentication_error_response(
                 title="Missing Authentication",
-                detail="X-Agent-Key header is required for authentication",
+                detail="Provide either X-Agent-Key header (API key) or Authorization: Bearer <token>",
                 instance=request.url.path,
             )
 
-        # Verify API key and load agent
+        # Verify credentials and load agent
         try:
-            agent = await self._verify_api_key(api_key)
+            if api_key:
+                agent = await self._verify_api_key(api_key)
+            else:
+                agent = await self._verify_bearer_token(bearer_token)  # type: ignore[arg-type]
+
             if not agent:
                 logger.warning(
                     "authentication_failed",
@@ -332,6 +342,38 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             await session.refresh(credential, ["agent"])
 
             return credential.agent
+
+    async def _verify_bearer_token(self, token: str) -> Agent | None:
+        """
+        Validate a Bearer JWT and return the associated agent.
+
+        Args:
+            token: Raw Bearer token string
+
+        Returns:
+            Agent if token is valid and agent is found, None otherwise
+        """
+        from sqlalchemy import select
+
+        from agentauth.services.token import TokenService
+
+        session_maker = self._session_maker or get_session_maker()
+        async with session_maker() as session:
+            token_service = TokenService(session)
+            result = await token_service.validate_token(token, expected_token_type="access")
+
+            if not result.valid or result.claims is None:
+                return None
+
+            # Load agent by sub claim (agent UUID)
+            from uuid import UUID as _UUID
+            try:
+                agent_id = _UUID(result.claims.sub)
+            except ValueError:
+                return None
+
+            agent_result = await session.execute(select(Agent).where(Agent.id == agent_id))
+            return agent_result.scalar_one_or_none()
 
     def _authorization_error_response(
         self,

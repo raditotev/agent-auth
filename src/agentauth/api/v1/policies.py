@@ -159,6 +159,132 @@ async def delete_policy(
     logger.info("Policy deleted", policy_id=str(policy_id))
 
 
+@router.get(
+    "/syntax",
+    summary="Policy syntax reference",
+    description="Returns documentation on the pattern syntax for policy subjects, resources, and conditions.",
+)
+async def policy_syntax() -> dict:
+    """
+    Policy syntax reference for programmatic clients.
+
+    Describes the JSON structure accepted by `subjects`, `resources`, and `conditions`
+    fields when creating or updating policies.
+    """
+    return {
+        "subjects": {
+            "description": "Specifies which agents the policy applies to.",
+            "fields": {
+                "agent_ids": {
+                    "type": "array[uuid]",
+                    "description": "Exact agent UUIDs to match.",
+                    "example": {"agent_ids": ["550e8400-e29b-41d4-a716-446655440000"]},
+                },
+                "agent_types": {
+                    "type": "array[string]",
+                    "values": ["orchestrator", "autonomous", "assistant", "tool"],
+                    "description": "Match agents by type.",
+                    "example": {"agent_types": ["autonomous", "tool"]},
+                },
+                "trust_levels": {
+                    "type": "array[string]",
+                    "values": ["root", "delegated", "ephemeral"],
+                    "description": "Match agents by trust level.",
+                    "example": {"trust_levels": ["delegated"]},
+                },
+                "wildcard": {
+                    "type": "boolean",
+                    "description": "If true, matches all agents.",
+                    "example": {"wildcard": True},
+                },
+            },
+            "combining": "All provided fields are ANDed. An empty {} matches nothing.",
+        },
+        "resources": {
+            "description": "Specifies which API paths or services the policy covers.",
+            "fields": {
+                "paths": {
+                    "type": "array[string]",
+                    "description": "Exact path match or prefix match using '*' wildcard.",
+                    "examples": [
+                        "/api/v1/agents",
+                        "/api/v1/credentials/*",
+                        "/api/v1/*",
+                    ],
+                },
+                "wildcard": {
+                    "type": "boolean",
+                    "description": "If true, matches all resources.",
+                    "example": {"wildcard": True},
+                },
+            },
+            "combining": "An agent request matches if ANY listed path matches (OR logic).",
+        },
+        "actions": {
+            "description": "HTTP-method-level actions that the policy covers.",
+            "values": {
+                "read": "GET, HEAD, OPTIONS",
+                "write": "POST, PUT, PATCH",
+                "delete": "DELETE",
+                "execute": "Trigger or invoke operations",
+                "delegate": "Create delegations",
+                "admin": "Administrative operations (implies all others)",
+            },
+        },
+        "conditions": {
+            "description": "Optional additional constraints on when the policy applies.",
+            "fields": {
+                "time_window": {
+                    "type": "object",
+                    "description": "Restrict policy to a time range (UTC ISO 8601).",
+                    "example": {
+                        "time_window": {
+                            "not_before": "2024-01-01T00:00:00Z",
+                            "not_after": "2024-12-31T23:59:59Z",
+                        }
+                    },
+                },
+                "ip_ranges": {
+                    "type": "array[string]",
+                    "description": "CIDR ranges from which requests are permitted.",
+                    "example": {"ip_ranges": ["10.0.0.0/8", "192.168.1.0/24"]},
+                },
+                "rate_limit": {
+                    "type": "object",
+                    "description": "Per-agent rate limit override for matched requests.",
+                    "example": {"rate_limit": {"requests": 100, "window_seconds": 60}},
+                },
+            },
+            "combining": "All specified conditions must be satisfied (AND logic).",
+        },
+        "evaluation_order": (
+            "Policies are evaluated highest-priority first (priority DESC, created_at DESC). "
+            "The first matching policy's effect (allow/deny) is applied. "
+            "Default: deny if no policy matches."
+        ),
+        "examples": {
+            "allow_read_only_for_tool_agents": {
+                "name": "Tool agents read-only",
+                "effect": "allow",
+                "subjects": {"agent_types": ["tool"]},
+                "resources": {"paths": ["/api/v1/*"]},
+                "actions": ["read"],
+                "conditions": {},
+                "priority": 10,
+            },
+            "deny_credentials_access_for_ephemeral": {
+                "name": "Block ephemeral agents from credentials",
+                "effect": "deny",
+                "subjects": {"trust_levels": ["ephemeral"]},
+                "resources": {"paths": ["/api/v1/credentials/*"]},
+                "actions": ["read", "write", "delete"],
+                "conditions": {},
+                "priority": 100,
+            },
+        },
+    }
+
+
 @router.post("/evaluate", response_model=PolicyEvaluateResponse)
 async def evaluate_policy(
     payload: PolicyEvaluateRequest,
