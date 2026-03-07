@@ -1,0 +1,20 @@
+{
+  "id": "2.4",
+  "phase": "Phase 2 - Token Service & Auth Flows",
+  "title": "Token Introspection",
+  "description": "Implement POST /api/v1/auth/token/introspect per RFC 7662. Accept token in body, return active status plus decoded claims. Cache introspection results in Redis (TTL = remaining token lifetime). Support both JWT and opaque token formats.",
+  "validation": [
+    "POST /api/v1/auth/token/introspect endpoint implemented",
+    "Follows RFC 7662 specification",
+    "Accepts token in request body",
+    "Returns active status and decoded claims",
+    "Caches results in Redis with TTL = remaining token lifetime",
+    "Supports JWT format",
+    "Supports opaque token format",
+    "Tests verify introspection for valid tokens",
+    "Tests verify introspection for expired/invalid tokens",
+    "Tests verify caching behavior"
+  ],
+  "completed": true,
+  "dependencies": ["2.3"]
+}

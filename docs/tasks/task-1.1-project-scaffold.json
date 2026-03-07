@@ -1,0 +1,17 @@
+{
+  "id": "1.1",
+  "phase": "Phase 1 - Foundation",
+  "title": "Project Scaffold",
+  "description": "Initialize a new Python project with uv. Set up FastAPI app factory in src/agentauth/main.py with health and readiness endpoints. Create docker-compose.yml with postgres:16 and redis:7. Add pyproject.toml with dependencies: fastapi, uvicorn, sqlalchemy[asyncio], asyncpg, redis, pydantic-settings, structlog. Configure ruff and mypy.",
+  "validation": [
+    "uv project is initialized with pyproject.toml",
+    "FastAPI app factory exists in src/agentauth/main.py",
+    "Health endpoint GET /health returns 200",
+    "Readiness endpoint GET /ready returns 200",
+    "docker-compose.yml contains postgres:16 and redis:7 services",
+    "ruff and mypy are configured",
+    "All dependencies listed in pyproject.toml"
+  ],
+  "completed": true,
+  "dependencies": []
+}

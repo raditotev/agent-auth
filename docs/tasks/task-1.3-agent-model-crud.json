@@ -1,0 +1,21 @@
+{
+  "id": "1.3",
+  "phase": "Phase 1 - Foundation",
+  "title": "Agent Model + CRUD",
+  "description": "Create Agent model with fields: parent_agent_id (self-referencing FK, nullable), name, agent_type (enum: orchestrator, autonomous, assistant, tool), description, public_key, trust_level (enum: root, delegated, ephemeral), status, max_child_depth, metadata (JSONB). Root agents have parent_agent_id=null and trust_level=root. Implement CRUD endpoints under /api/v1/agents. Add bootstrap registration endpoint for root agents. Add Alembic migration.",
+  "validation": [
+    "Agent model exists in src/agentauth/models/agent.py with all required fields",
+    "Alembic migration created for Agent table",
+    "POST /api/v1/agents endpoint creates new agent",
+    "POST /api/v1/agents/bootstrap endpoint for root agent registration",
+    "GET /api/v1/agents lists agents",
+    "GET /api/v1/agents/{agent_id} returns agent details",
+    "PATCH /api/v1/agents/{agent_id} updates agent",
+    "DELETE /api/v1/agents/{agent_id} deactivates agent",
+    "GET /api/v1/agents/{agent_id}/children lists child agents",
+    "Tests verify root agents have parent_agent_id=null and trust_level=root"
+  ],
+  "completed": true,
+  "dependencies": ["1.2"],
+  "completion_date": "2026-03-06"
+}

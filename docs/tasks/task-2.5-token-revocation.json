@@ -1,0 +1,48 @@
+{
+  "id": "2.5",
+  "phase": "Phase 2 - Token Service & Auth Flows",
+  "title": "Token Revocation",
+  "description": "Implement POST /api/v1/auth/token/revoke per RFC 7009. Add revoked token JTI to Redis blocklist (TTL = original token expiry). Introspection checks blocklist before returning active=true. Support cascading revocation of refresh tokens.",
+  "validation": [
+    "POST /api/v1/auth/token/revoke endpoint implemented ✅",
+    "Follows RFC 7009 specification ✅",
+    "Adds revoked token JTI to Redis blocklist ✅",
+    "Blocklist TTL matches original token expiry ✅",
+    "Token introspection checks blocklist ✅",
+    "Supports cascading revocation of refresh tokens ✅",
+    "Tests verify revoked tokens return active=false ✅",
+    "Tests verify cascading revocation ✅",
+    "Creates audit event for revocation ✅"
+  ],
+  "completed": true,
+  "dependencies": ["2.4"],
+  "completionNotes": {
+    "implementation": [
+      "Token revocation endpoint fully implemented at POST /api/v1/auth/token/revoke",
+      "Follows RFC 7009 - idempotent revocation, returns 200 OK regardless of token validity",
+      "Revoked tokens added to Redis blocklist with key format 'revoked:{jti}'",
+      "TTL for blocklist entries matches token's natural expiration time",
+      "Introspection checks blocklist before validation, returns active=false for revoked tokens",
+      "Cascading revocation implemented: revoking access token also revokes refresh token and vice versa",
+      "Token pair relationships stored in Redis during minting with keys 'token_pair:access:{jti}' and 'token_pair:refresh:{jti}'",
+      "Cache invalidation for paired tokens handled via 'jti_to_cache:{jti}' mappings",
+      "Audit events created for all revocation operations"
+    ],
+    "testing": [
+      "test_revoke_token_endpoint - verifies endpoint returns 200 OK and creates audit event",
+      "test_revoke_invalid_token_succeeds - verifies RFC 7009 idempotence",
+      "test_revoke_then_introspect_returns_inactive - verifies blocklist integration",
+      "test_token_revocation_with_real_redis - end-to-end test with real Redis",
+      "test_cascading_revocation_access_token_revokes_refresh - verifies cascading from access to refresh",
+      "test_cascading_revocation_refresh_token_revokes_access - verifies cascading from refresh to access",
+      "All tests pass successfully"
+    ],
+    "features": [
+      "Cascading revocation ensures both access and refresh tokens are invalidated together",
+      "Cache invalidation prevents stale introspection results",
+      "Token pair mappings cleaned up after revocation",
+      "Supports partial token information during cascading (uses max TTL when exact expiry unknown)",
+      "Logging includes detailed information about cascading operations"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "3.3",
+  "phase": "Phase 3 - Authorization & Policy Engine",
+  "title": "Policy Evaluation Engine",
+  "description": "Create authorization service with evaluate(agent, action, resource, context) method. Load applicable policies ordered by priority. Implement deny-overrides combining algorithm: if any deny matches, deny. If any allow matches, allow. Otherwise deny (default deny). Cache compiled policies in Redis. Add POST /api/v1/policies/evaluate for dry-run testing.",
+  "validation": [
+    "Authorization service exists in src/agentauth/services/authorization.py",
+    "Has evaluate(agent, action, resource, context) method",
+    "Loads applicable policies ordered by priority",
+    "Implements deny-overrides algorithm",
+    "Any matching deny policy results in denial",
+    "Requires explicit allow to grant access",
+    "Default deny when no policies match",
+    "Caches compiled policies in Redis",
+    "POST /api/v1/policies/evaluate endpoint for dry-run testing",
+    "Tests verify deny-overrides logic",
+    "Tests verify default deny",
+    "Tests verify caching behavior"
+  ],
+  "completed": true,
+  "dependencies": ["3.2"]
+}

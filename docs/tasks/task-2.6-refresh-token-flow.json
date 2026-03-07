@@ -1,0 +1,20 @@
+{
+  "id": "2.6",
+  "phase": "Phase 2 - Token Service & Auth Flows",
+  "title": "Refresh Token Flow",
+  "description": "Implement refresh_token grant type. On use, issue new access + refresh token pair, revoke the old refresh token. Detect refresh token reuse (replay attack) and revoke entire token family if detected. Store token family lineage in Redis.",
+  "validation": [
+    "refresh_token grant type implemented on POST /api/v1/auth/token",
+    "Issues new access_token and refresh_token on successful refresh",
+    "Revokes old refresh token immediately",
+    "Detects refresh token reuse (replay attack)",
+    "Revokes entire token family on replay detection",
+    "Stores token family lineage in Redis",
+    "Tests verify normal refresh flow",
+    "Tests verify replay attack detection",
+    "Tests verify token family revocation",
+    "Creates audit events for refresh operations"
+  ],
+  "completed": true,
+  "dependencies": ["2.5"]
+}

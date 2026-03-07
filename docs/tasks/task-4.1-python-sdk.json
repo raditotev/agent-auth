@@ -1,0 +1,22 @@
+{
+  "id": "4.1",
+  "phase": "Phase 4 - SDK, Observability & Hardening",
+  "title": "Python SDK",
+  "description": "Create agentauth-sdk Python package in sdk/ directory. Implement AgentAuthClient with methods: authenticate(), get_token(), refresh_token(), introspect(). Add automatic token refresh with configurable buffer. Include FastAPI middleware (AgentAuthMiddleware) that validates incoming tokens. Add retry logic with exponential backoff.",
+  "validation": [
+    "SDK package exists in sdk/ directory",
+    "Has pyproject.toml for SDK",
+    "AgentAuthClient class implemented",
+    "authenticate() method works",
+    "get_token() method works",
+    "refresh_token() method works",
+    "introspect() method works",
+    "Automatic token refresh implemented with configurable buffer",
+    "AgentAuthMiddleware for FastAPI included",
+    "Retry logic with exponential backoff implemented",
+    "Tests verify SDK functionality",
+    "Tests verify middleware integration"
+  ],
+  "completed": true,
+  "dependencies": ["3.6"]
+}

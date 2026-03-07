@@ -1,0 +1,19 @@
+{
+  "id": "3.6",
+  "phase": "Phase 3 - Authorization & Policy Engine",
+  "title": "Agent Delegation Grant",
+  "description": "Implement agent_delegation grant type. Agent presents delegation_token (proving parent agent authorized it) plus its own credential. Service validates the delegation chain, computes effective scopes (intersection of all links in chain), and issues an access token with those scopes. Include delegation_chain claim in issued JWT.",
+  "validation": [
+    "agent_delegation grant type implemented on POST /api/v1/auth/token",
+    "Accepts delegation_token parameter",
+    "Validates delegation chain",
+    "Computes effective scopes as intersection of chain",
+    "Issues access token with computed scopes",
+    "Includes delegation_chain claim in JWT",
+    "Tests verify full delegation flow",
+    "Tests verify scope intersection logic",
+    "Tests verify invalid delegation chains are rejected"
+  ],
+  "completed": true,
+  "dependencies": ["3.5"]
+}

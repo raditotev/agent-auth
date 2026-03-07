@@ -1,0 +1,21 @@
+{
+  "id": "4.3",
+  "phase": "Phase 4 - SDK, Observability & Hardening",
+  "title": "Audit Log Query API",
+  "description": "Implement GET /api/v1/audit/events with filters: event_type, actor_id, target_id, date range, outcome. Use cursor-based pagination. Add PostgreSQL GIN index on metadata JSONB. Support export as JSONL.",
+  "validation": [
+    "GET /api/v1/audit/events endpoint implemented",
+    "Supports event_type filter",
+    "Supports actor_id filter",
+    "Supports target_id filter",
+    "Supports date range filter",
+    "Supports outcome filter",
+    "Cursor-based pagination implemented",
+    "PostgreSQL GIN index on metadata JSONB",
+    "Export as JSONL supported",
+    "Tests verify filtering",
+    "Tests verify pagination"
+  ],
+  "completed": true,
+  "dependencies": ["4.2"]
+}

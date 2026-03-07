@@ -1,0 +1,21 @@
+{
+  "id": "4.6",
+  "phase": "Phase 4 - SDK, Observability & Hardening",
+  "title": "Well-Known Metadata",
+  "description": "Implement /.well-known/agent-configuration endpoint that returns: issuer URL, token endpoint, jwks_uri, supported grant types, supported scopes, introspection endpoint, revocation endpoint, registration endpoint. Follow OpenID Connect Discovery format adapted for agent auth.",
+  "validation": [
+    "GET /.well-known/agent-configuration endpoint implemented",
+    "Returns issuer URL",
+    "Returns token endpoint",
+    "Returns jwks_uri",
+    "Returns supported grant types",
+    "Returns supported scopes",
+    "Returns introspection endpoint",
+    "Returns revocation endpoint",
+    "Returns registration endpoint",
+    "Follows OpenID Connect Discovery format",
+    "Tests verify endpoint response structure"
+  ],
+  "completed": true,
+  "dependencies": ["4.5"]
+}

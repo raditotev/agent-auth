@@ -1,0 +1,24 @@
+{
+  "id": "3.2",
+  "phase": "Phase 3 - Authorization & Policy Engine",
+  "title": "Policy Model + CRUD",
+  "description": "Create Policy model with fields: effect (allow/deny), subjects (JSONB for agent patterns), resources (JSONB for API patterns), actions (array), conditions (JSONB for time, IP, rate limits), priority. Implement CRUD endpoints. Validate policy consistency on create/update.",
+  "validation": [
+    "Policy model exists in src/agentauth/models/policy.py",
+    "Has effect field (allow/deny enum)",
+    "Has subjects field (JSONB)",
+    "Has resources field (JSONB)",
+    "Has actions field (array)",
+    "Has conditions field (JSONB)",
+    "Has priority field (integer)",
+    "POST /api/v1/policies creates policy",
+    "GET /api/v1/policies lists policies",
+    "GET /api/v1/policies/{policy_id} returns policy details",
+    "PUT /api/v1/policies/{policy_id} updates policy",
+    "DELETE /api/v1/policies/{policy_id} deletes policy",
+    "Policy consistency validation on create/update",
+    "Tests verify CRUD operations"
+  ],
+  "completed": true,
+  "dependencies": ["3.1"]
+}

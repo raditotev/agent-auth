@@ -1,0 +1,24 @@
+{
+  "id": "3.5",
+  "phase": "Phase 3 - Authorization & Policy Engine",
+  "title": "Delegation Model + Chain",
+  "description": "Create Delegation model. Implement delegation creation that validates: delegator has the scopes being delegated, chain depth doesn't exceed max, scopes are a subset of delegator's effective scopes. Both delegator and delegate are always agents (no special-casing). Implement chain traversal to compute effective permissions. Add cascading revocation (revoking a delegation revokes all downstream).",
+  "validation": [
+    "Delegation model exists in src/agentauth/models/delegation.py",
+    "Has delegator_agent_id and delegate_agent_id fields",
+    "Has scopes, constraints, chain_depth, max_chain_depth fields",
+    "POST /api/v1/delegations creates delegation",
+    "Validates delegator has scopes being delegated",
+    "Validates chain depth doesn't exceed max",
+    "Validates scopes are subset of delegator's effective scopes",
+    "GET /api/v1/delegations lists delegations",
+    "GET /api/v1/delegations/{id}/chain shows full delegation chain",
+    "DELETE /api/v1/delegations/{id} revokes delegation",
+    "Cascading revocation implemented",
+    "Chain traversal computes effective permissions",
+    "Tests verify delegation creation validation",
+    "Tests verify cascading revocation"
+  ],
+  "completed": true,
+  "dependencies": ["3.4"]
+}

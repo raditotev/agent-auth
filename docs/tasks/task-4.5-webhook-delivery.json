@@ -1,0 +1,23 @@
+{
+  "id": "4.5",
+  "phase": "Phase 4 - SDK, Observability & Hardening",
+  "title": "Webhook Delivery",
+  "description": "Create webhook subscription model. Implement async webhook delivery via Celery with: HMAC-SHA256 signed payloads, exponential backoff retry (max 5 attempts), delivery log, and subscription management endpoints. Events: credential.rotated, agent.suspended, policy.violated, delegation.revoked.",
+  "validation": [
+    "Webhook subscription model exists",
+    "Subscription management endpoints implemented",
+    "Async webhook delivery via Celery",
+    "Payloads signed with HMAC-SHA256",
+    "Exponential backoff retry implemented",
+    "Max 5 retry attempts",
+    "Delivery log maintained",
+    "credential.rotated event triggers webhook",
+    "agent.suspended event triggers webhook",
+    "policy.violated event triggers webhook",
+    "delegation.revoked event triggers webhook",
+    "Tests verify webhook delivery",
+    "Tests verify signature verification"
+  ],
+  "completed": true,
+  "dependencies": ["4.4"]
+}

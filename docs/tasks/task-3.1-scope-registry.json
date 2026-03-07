@@ -1,0 +1,19 @@
+{
+  "id": "3.1",
+  "phase": "Phase 3 - Authorization & Policy Engine",
+  "title": "Scope Registry",
+  "description": "Create Scope model and CRUD endpoints. Scopes have a name (dotted notation: 'files.read', 'email.send'), description, and category. Seed default scopes. Scopes can be hierarchical — 'files.*' implies 'files.read' and 'files.write'. Implement scope resolution logic.",
+  "validation": [
+    "Scope model exists in src/agentauth/models/scope.py",
+    "POST /api/v1/scopes creates new scope",
+    "GET /api/v1/scopes lists all scopes",
+    "Scope name uses dotted notation",
+    "Default scopes are seeded on startup",
+    "Hierarchical scope resolution implemented",
+    "'files.*' implies 'files.read' and 'files.write'",
+    "Tests verify scope resolution logic",
+    "Tests verify hierarchical matching"
+  ],
+  "completed": true,
+  "dependencies": ["2.6"]
+}

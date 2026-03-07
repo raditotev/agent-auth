@@ -1,0 +1,31 @@
+{
+  "id": "2.1",
+  "phase": "Phase 2 - Token Service & Auth Flows",
+  "title": "JWK Management",
+  "description": "Create crypto service that generates RSA-2048 and ES256 key pairs, stores them in DB with key ID and activation/expiration dates. Implement /auth/jwks endpoint serving public keys in JWK Set format. Add scheduled task for key rotation (new key every 30 days, old keys valid 60 more days).",
+  "validation": [
+    "Crypto service exists in src/agentauth/services/crypto.py",
+    "Generates RSA-2048 key pairs",
+    "Generates ES256 (ECDSA) key pairs",
+    "Keys stored in DB with key_id, activation_date, expiration_date",
+    "GET /api/v1/auth/jwks endpoint returns JWK Set",
+    "JWK Set format follows RFC 7517",
+    "Scheduled task for key rotation implemented",
+    "New keys generated every 30 days",
+    "Old keys valid for 60 additional days",
+    "Tests verify key rotation logic"
+  ],
+  "completed": true,
+  "dependencies": ["1.5"],
+  "completion_date": "2026-03-06",
+  "deliverables": [
+    "SigningKey model (src/agentauth/models/signing_key.py)",
+    "CryptoService with RSA-2048 and ES256 key generation (src/agentauth/services/crypto.py)",
+    "JWKS endpoint GET /api/v1/auth/jwks (src/agentauth/api/v1/auth.py)",
+    "Key rotation Celery task (src/agentauth/tasks/key_rotation.py)",
+    "Database migration for signing_keys table",
+    "Comprehensive unit tests (tests/unit/test_crypto_service.py)",
+    "Integration tests for JWKS endpoint (tests/integration/test_jwks_endpoint.py)",
+    "Key rotation task tests (tests/unit/test_key_rotation_task.py)"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "3.4",
+  "phase": "Phase 3 - Authorization & Policy Engine",
+  "title": "Auth Middleware Integration",
+  "description": "Create FastAPI middleware that extracts agent identity from token, resolves requested action + resource from the route, calls policy evaluation engine, and returns 403 with details on denial. Add X-Authorization-Decision header for debugging.",
+  "validation": [
+    "Authorization middleware added to src/agentauth/api/middleware.py",
+    "Extracts agent identity from token",
+    "Resolves action and resource from route",
+    "Calls policy evaluation engine",
+    "Returns 403 with RFC 7807 body on denial",
+    "Includes policy ID in denial response",
+    "Adds X-Authorization-Decision header",
+    "Tests verify middleware integration",
+    "Tests verify 403 responses include details"
+  ],
+  "completed": true,
+  "dependencies": ["3.3"]
+}

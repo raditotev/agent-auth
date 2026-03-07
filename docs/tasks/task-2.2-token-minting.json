@@ -1,0 +1,18 @@
+{
+  "id": "2.2",
+  "phase": "Phase 2 - Token Service & Auth Flows",
+  "title": "Token Minting",
+  "description": "Create token service that mints JWTs with claims: iss, sub (agent_id), aud, exp, iat, jti, scopes, agent_type, trust_level, parent_agent_id, delegation_chain. Sign with current active RSA key. Support configurable expiry. Return token + metadata.",
+  "validation": [
+    "Token service exists in src/agentauth/services/token.py",
+    "Mints JWTs with all required claims (iss, sub, aud, exp, iat, jti)",
+    "Includes custom claims: scopes, agent_type, trust_level, parent_agent_id, delegation_chain",
+    "Signs with current active RSA key",
+    "Supports configurable token expiry",
+    "Returns token and metadata",
+    "Tests verify JWT structure and claims",
+    "Tests verify signature with public key"
+  ],
+  "completed": true,
+  "dependencies": ["2.1"]
+}

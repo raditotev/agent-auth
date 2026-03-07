@@ -1,0 +1,22 @@
+{
+  "id": "4.4",
+  "phase": "Phase 4 - SDK, Observability & Hardening",
+  "title": "Rate Limiting",
+  "description": "Implement sliding window rate limiting in Redis. Configurable per agent or per policy. Headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset. Return 429 with Retry-After header. Different limits for token endpoints vs. management API.",
+  "validation": [
+    "Rate limiting middleware implemented",
+    "Uses Redis sliding window algorithm",
+    "Configurable per agent",
+    "Configurable per policy",
+    "Returns X-RateLimit-Limit header",
+    "Returns X-RateLimit-Remaining header",
+    "Returns X-RateLimit-Reset header",
+    "Returns 429 status when limit exceeded",
+    "Includes Retry-After header in 429 response",
+    "Different limits for token endpoints",
+    "Different limits for management API",
+    "Tests verify rate limiting behavior"
+  ],
+  "completed": true,
+  "dependencies": ["4.3"]
+}

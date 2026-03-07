@@ -1,0 +1,16 @@
+{
+  "id": "1.2",
+  "phase": "Phase 1 - Foundation",
+  "title": "Database Setup",
+  "description": "Set up SQLAlchemy 2.0 async engine in core/database.py. Configure Alembic for async migrations. Create a BaseModel class with id (uuid7), created_at, updated_at columns. Use asyncpg as the driver.",
+  "validation": [
+    "SQLAlchemy async engine configured in src/agentauth/core/database.py",
+    "Alembic initialized with alembic.ini",
+    "BaseModel class exists with id (uuid7), created_at, updated_at",
+    "asyncpg driver is used",
+    "Database connection can be established",
+    "alembic upgrade head runs without errors"
+  ],
+  "completed": true,
+  "dependencies": ["1.1"]
+}

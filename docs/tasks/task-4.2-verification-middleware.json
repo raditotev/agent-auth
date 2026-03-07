@@ -1,0 +1,20 @@
+{
+  "id": "4.2",
+  "phase": "Phase 4 - SDK, Observability & Hardening",
+  "title": "Verification Middleware",
+  "description": "Add verify_agent() dependency for FastAPI that extracts Bearer token, fetches JWKS (cached), validates signature + claims, checks scopes against route requirements, and injects AgentIdentity into request. Implement scope decorators: @requires_scope('files.read').",
+  "validation": [
+    "verify_agent() dependency exists in src/agentauth/dependencies.py",
+    "Extracts Bearer token from Authorization header",
+    "Fetches and caches JWKS",
+    "Validates JWT signature",
+    "Validates JWT claims",
+    "Checks scopes against route requirements",
+    "Injects AgentIdentity into request",
+    "@requires_scope() decorator implemented",
+    "Tests verify token validation",
+    "Tests verify scope enforcement"
+  ],
+  "completed": true,
+  "dependencies": ["4.1"]
+}

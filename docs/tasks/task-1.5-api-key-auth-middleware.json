@@ -1,0 +1,37 @@
+{
+  "id": "1.5",
+  "phase": "Phase 1 - Foundation",
+  "title": "API Key Auth Middleware",
+  "description": "Create middleware that extracts API key from X-Agent-Key header, looks up by prefix, verifies argon2 hash, resolves the associated agent and its trust_level, and injects it into request state. Return 401 with RFC 7807 body on failure. Update last_used_at on success.",
+  "validation": [
+    "Middleware exists in src/agentauth/api/middleware.py",
+    "Extracts API key from X-Agent-Key header",
+    "Looks up credential by prefix",
+    "Verifies argon2 hash",
+    "Resolves associated agent and trust_level",
+    "Injects agent into request state",
+    "Returns 401 with RFC 7807 Problem Details on failure",
+    "Updates last_used_at timestamp on successful auth",
+    "Tests verify auth flow end-to-end"
+  ],
+  "completed": true,
+  "completion_date": "2026-03-06",
+  "dependencies": ["1.4"],
+  "deliverables": {
+    "middleware": "src/agentauth/api/middleware.py",
+    "dependencies": "src/agentauth/dependencies.py",
+    "unit_tests": [
+      "tests/unit/test_api_key_auth_middleware.py (13 tests, all passing)",
+      "tests/unit/test_dependencies.py (10 tests, all passing)"
+    ],
+    "integration_tests": "tests/integration/test_auth_middleware_integration.py",
+    "documentation": "docs/tasks/task-1.5-completion-summary.md"
+  },
+  "test_results": {
+    "unit_tests": "23/23 passing",
+    "coverage": {
+      "middleware": "85%",
+      "dependencies": "100%"
+    }
+  }
+}
