@@ -177,6 +177,7 @@ curl http://localhost:8000/.well-known/agent-configuration
 
 ## What's next
 
+- [Admin](./admin.md) — platform operator endpoints (stats, audit)
 - [Delegation](./delegation.md) — delegate permissions to child agents
 - [Policies](./policies.md) — create authorization rules
 - [API Reference](../api-reference/) — full endpoint documentation

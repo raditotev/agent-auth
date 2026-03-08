@@ -58,6 +58,13 @@ class Settings(BaseSettings):
         description="CORS allowed origins",
     )
 
+    # Admin (platform operators only — not agent auth)
+    admin_api_key: str | None = Field(
+        default=None,
+        description="API key for platform admin endpoints (stats, audit). "
+        "Set via ADMIN_API_KEY. Required for GET /api/v1/stats and GET /api/v1/audit/events.",
+    )
+
     def validate_production_settings(self) -> list[str]:
         """Check for insecure defaults that must be changed in production.
 

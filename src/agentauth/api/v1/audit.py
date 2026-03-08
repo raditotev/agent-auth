@@ -1,4 +1,4 @@
-"""Audit log query API (Task 4.3)."""
+"""Audit log query API — for platform operators only (X-Admin-Key)."""
 
 import json
 from datetime import datetime
@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.core.database import get_session
+from agentauth.dependencies import require_admin_key
 from agentauth.models.audit import AuditEvent, EventOutcome
 
 logger = structlog.get_logger()
@@ -18,8 +19,13 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/audit", tags=["Audit"])
 
 
-@router.get("/events")
+@router.get(
+    "/events",
+    summary="Query audit log",
+    description="Requires X-Admin-Key header (platform operators only).",
+)
 async def list_audit_events(
+    _: Annotated[None, Depends(require_admin_key)],
     session: Annotated[AsyncSession, Depends(get_session)],
     event_type: str | None = Query(None, description="Filter by event type"),
     actor_id: UUID | None = Query(None, description="Filter by actor agent ID"),

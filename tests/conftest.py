@@ -1,5 +1,10 @@
 """Pytest configuration and fixtures."""
 
+import os
+
+# Set admin key for tests (must be before agentauth imports so config picks it up)
+os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
+
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -7,8 +12,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
-
-import os
 
 from agentauth.core.database import BaseModel, get_session
 from agentauth.main import create_app

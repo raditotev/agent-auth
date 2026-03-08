@@ -1,11 +1,13 @@
 """FastAPI dependency injection utilities."""
 
+import secrets
 from dataclasses import dataclass, field
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 
+from agentauth.config import settings
 from agentauth.models.agent import Agent, TrustLevel
 
 
@@ -160,6 +162,43 @@ def get_current_agent(request: Request) -> Agent:
         )
 
     return request.state.agent
+
+
+def require_admin_key(request: Request) -> None:
+    """
+    FastAPI dependency for platform admin endpoints (stats, audit).
+
+    Requires X-Admin-Key header to match ADMIN_API_KEY. Used by project
+    maintainers/operators — not agent authentication. Root agents cannot
+    access admin endpoints; only the configured admin key can.
+
+    Raises:
+        HTTPException 401: If admin key is not configured or header is missing/invalid.
+    """
+    if not settings.admin_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "type": "https://agentauth.dev/problems/admin-not-configured",
+                "title": "Admin Not Configured",
+                "status": 503,
+                "detail": "Admin endpoints require ADMIN_API_KEY to be set. "
+                "Contact the platform operator.",
+            },
+        )
+
+    key = request.headers.get("X-Admin-Key")
+    if not key or not secrets.compare_digest(key, settings.admin_api_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "type": "https://agentauth.dev/problems/admin-authentication-failed",
+                "title": "Admin Authentication Required",
+                "status": 401,
+                "detail": "Provide a valid X-Admin-Key header for platform admin access.",
+            },
+            headers={"WWW-Authenticate": 'AdminKey realm="AgentAuth"'},
+        )
 
 
 def require_root_agent(

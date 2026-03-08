@@ -94,6 +94,9 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 # API
 API_V1_PREFIX=/api/v1
 CORS_ORIGINS=["*"]
+
+# Admin (platform operators only — not agent auth)
+ADMIN_API_KEY=your-admin-api-key-here
 ```
 
 ---
@@ -153,9 +156,12 @@ CORS_ORIGINS=["*"]
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/v1/audit/events` | Query audit log |
+| `GET` | `/api/v1/stats` | System statistics (agents, credentials, tokens) — requires `X-Admin-Key` |
+| `GET` | `/api/v1/audit/events` | Query audit log — requires `X-Admin-Key` |
 | `GET` | `/health` | Health check |
 | `GET` | `/ready` | Readiness check |
+
+**Admin endpoints** (`/stats`, `/audit/events`) are for platform operators only. They require the `X-Admin-Key` header set to `ADMIN_API_KEY`. Root agents cannot access these — they use separate platform-level authentication.
 
 ### Auth Grant Types
 

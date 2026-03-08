@@ -45,6 +45,9 @@ _EXEMPT_PATHS: frozenset[str] = frozenset({
     "/api/v1/auth/token/introspect",  # RFC 7662
     "/api/v1/auth/token/revoke",      # RFC 7009
     "/.well-known/agent-configuration",  # Discovery endpoint
+    # Admin endpoints use X-Admin-Key (platform operators only), not agent auth
+    "/api/v1/stats",
+    "/api/v1/audit/events",
 })
 
 # Path prefixes that are always exempt (e.g. interactive docs sub-paths)
