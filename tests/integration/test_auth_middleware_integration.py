@@ -27,9 +27,7 @@ class TestAuthenticationIntegration:
         self, app, db_session: AsyncSession
     ):
         """Test complete flow: bootstrap agent, create credential, make authenticated request."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Step 1: Bootstrap a root agent (no auth required)
             bootstrap_data = {
                 "name": "Integration Test Agent",
@@ -39,9 +37,7 @@ class TestAuthenticationIntegration:
                 "metadata": {"test": "integration"},
             }
 
-            response = await client.post(
-                "/api/v1/agents/bootstrap", json=bootstrap_data
-            )
+            response = await client.post("/api/v1/agents/bootstrap", json=bootstrap_data)
             assert response.status_code == 201
             agent_data = response.json()["data"]
             agent_id = agent_data["id"]
@@ -61,9 +57,7 @@ class TestAuthenticationIntegration:
             await db_session.commit()
 
             # Step 3: List agents using authenticated request
-            response = await client.get(
-                "/api/v1/agents", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/api/v1/agents", headers={"X-Agent-Key": raw_key})
             assert response.status_code == 200
             agents_list = response.json()
             assert "data" in agents_list
@@ -71,9 +65,7 @@ class TestAuthenticationIntegration:
 
     async def test_create_child_agent_requires_auth(self, app, db_session: AsyncSession):
         """Creating a child agent should require authentication."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Try to create agent without auth
             agent_data = {
                 "name": "Child Agent",
@@ -85,13 +77,9 @@ class TestAuthenticationIntegration:
             assert response.status_code == 401
             assert response.headers["content-type"] == "application/problem+json"
 
-    async def test_credential_operations_require_auth(
-        self, app, db_session: AsyncSession
-    ):
+    async def test_credential_operations_require_auth(self, app, db_session: AsyncSession):
         """Credential operations should require authentication."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Try to list credentials without auth
             response = await client.get("/api/v1/credentials")
             assert response.status_code == 401
@@ -106,9 +94,7 @@ class TestAuthenticationIntegration:
             )
             assert response.status_code == 401
 
-    async def test_authenticated_agent_can_create_child(
-        self, app, db_session: AsyncSession
-    ):
+    async def test_authenticated_agent_can_create_child(self, app, db_session: AsyncSession):
         """Authenticated root agent should be able to create child agents."""
         # Create root agent and credential
         identity_service = IdentityService(db_session)
@@ -130,9 +116,7 @@ class TestAuthenticationIntegration:
         )
         await db_session.commit()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Create child agent
             child_data = {
                 "name": "Child Agent",
@@ -178,9 +162,7 @@ class TestAuthenticationIntegration:
         )
         await db_session.commit()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # List credentials using first key
             response = await client.get(
                 f"/api/v1/credentials?agent_id={agent.id}",
@@ -192,9 +174,7 @@ class TestAuthenticationIntegration:
             # Should see at least 2 credentials
             assert len(creds_data["data"]) >= 2
 
-    async def test_revoked_credential_cannot_authenticate(
-        self, app, db_session: AsyncSession
-    ):
+    async def test_revoked_credential_cannot_authenticate(self, app, db_session: AsyncSession):
         """Revoked credential should not be able to authenticate."""
         # Create agent with credential
         identity_service = IdentityService(db_session)
@@ -215,13 +195,9 @@ class TestAuthenticationIntegration:
         )
         await db_session.commit()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # First request should succeed
-            response = await client.get(
-                "/api/v1/agents", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/api/v1/agents", headers={"X-Agent-Key": raw_key})
             assert response.status_code == 200
 
             # Revoke the credential
@@ -229,16 +205,12 @@ class TestAuthenticationIntegration:
             await db_session.commit()
 
             # Second request should fail
-            response = await client.get(
-                "/api/v1/agents", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/api/v1/agents", headers={"X-Agent-Key": raw_key})
             assert response.status_code == 401
             problem = response.json()
             assert problem["title"] == "Invalid Authentication"
 
-    async def test_suspended_agent_cannot_authenticate(
-        self, app, db_session: AsyncSession
-    ):
+    async def test_suspended_agent_cannot_authenticate(self, app, db_session: AsyncSession):
         """Suspended agent should not be able to authenticate."""
         # Create agent with credential
         identity_service = IdentityService(db_session)
@@ -259,13 +231,9 @@ class TestAuthenticationIntegration:
         )
         await db_session.commit()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # First request should succeed
-            response = await client.get(
-                "/api/v1/agents", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/api/v1/agents", headers={"X-Agent-Key": raw_key})
             assert response.status_code == 200
 
             # Suspend the agent
@@ -273,9 +241,7 @@ class TestAuthenticationIntegration:
             await db_session.commit()
 
             # Second request should fail
-            response = await client.get(
-                "/api/v1/agents", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/api/v1/agents", headers={"X-Agent-Key": raw_key})
             assert response.status_code == 401
             problem = response.json()
             assert problem["title"] == "Agent Inactive"
@@ -283,9 +249,7 @@ class TestAuthenticationIntegration:
 
     async def test_public_endpoints_accessible_without_auth(self, app):
         """Public endpoints should be accessible without authentication."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Health check
             response = await client.get("/health")
             assert response.status_code == 200

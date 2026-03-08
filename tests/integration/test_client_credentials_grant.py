@@ -365,6 +365,7 @@ async def test_client_credentials_token_structure_and_claims(
 
     # Validate token using TokenService
     from agentauth.services.token import TokenService
+
     token_service = TokenService(db_session)
 
     # Validate access token

@@ -171,16 +171,11 @@ class TestAgentList:
         child_agent: Agent,
     ) -> None:
         """Test listing agents filtered by parent."""
-        response = await client.get(
-            f"/api/v1/agents?parent_agent_id={root_agent.id}"
-        )
+        response = await client.get(f"/api/v1/agents?parent_agent_id={root_agent.id}")
         assert response.status_code == 200
 
         json_data = response.json()
-        assert all(
-            agent["parent_agent_id"] == str(root_agent.id)
-            for agent in json_data["data"]
-        )
+        assert all(agent["parent_agent_id"] == str(root_agent.id) for agent in json_data["data"])
 
     @pytest.mark.asyncio
     async def test_list_agents_by_status(
@@ -233,9 +228,7 @@ class TestAgentDetail:
         client: AsyncClient,
     ) -> None:
         """Test getting nonexistent agent."""
-        response = await client.get(
-            "/api/v1/agents/00000000-0000-0000-0000-000000000000"
-        )
+        response = await client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
 
 
@@ -316,9 +309,7 @@ class TestAgentDeactivation:
         client: AsyncClient,
     ) -> None:
         """Test deactivating nonexistent agent."""
-        response = await client.delete(
-            "/api/v1/agents/00000000-0000-0000-0000-000000000000"
-        )
+        response = await client.delete("/api/v1/agents/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
 
 
@@ -339,9 +330,7 @@ class TestAgentChildren:
         json_data = response.json()
         assert json_data["meta"]["parent_agent_id"] == str(root_agent.id)
         assert len(json_data["data"]) >= 1
-        assert any(
-            agent["id"] == str(child_agent.id) for agent in json_data["data"]
-        )
+        assert any(agent["id"] == str(child_agent.id) for agent in json_data["data"])
 
     @pytest.mark.asyncio
     async def test_list_agent_children_parent_not_found(
@@ -349,9 +338,7 @@ class TestAgentChildren:
         client: AsyncClient,
     ) -> None:
         """Test listing children of nonexistent agent."""
-        response = await client.get(
-            "/api/v1/agents/00000000-0000-0000-0000-000000000000/children"
-        )
+        response = await client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000/children")
         assert response.status_code == 404
 
 

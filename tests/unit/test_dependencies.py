@@ -77,9 +77,7 @@ async def ephemeral_agent(db_session: AsyncSession, root_agent: Agent) -> Agent:
 
 
 @pytest_asyncio.fixture
-async def root_agent_key(
-    db_session: AsyncSession, root_agent: Agent
-) -> tuple[Agent, str]:
+async def root_agent_key(db_session: AsyncSession, root_agent: Agent) -> tuple[Agent, str]:
     """Create API key for root agent."""
     credential_service = CredentialService(db_session)
     credential, raw_key = await credential_service.create_credential(
@@ -126,7 +124,9 @@ class TestGetCurrentAgent:
     """Test get_current_agent dependency."""
 
     async def test_get_current_agent_with_valid_auth(
-        self, root_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        root_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """get_current_agent should return agent from request state."""
         app = FastAPI()
@@ -138,9 +138,7 @@ class TestGetCurrentAgent:
 
         root_agent, raw_key = root_agent_key
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/test", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 200
@@ -157,9 +155,7 @@ class TestGetCurrentAgent:
         async def test_endpoint(agent: CurrentAgent):
             return {"agent_id": str(agent.id)}
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/test")
 
         assert response.status_code == 401
@@ -170,7 +166,9 @@ class TestRequireRootAgent:
     """Test require_root_agent dependency."""
 
     async def test_require_root_agent_with_root_agent(
-        self, root_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        root_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """require_root_agent should allow root agents."""
         app = FastAPI()
@@ -182,9 +180,7 @@ class TestRequireRootAgent:
 
         root_agent, raw_key = root_agent_key
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/admin", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 200
@@ -192,7 +188,9 @@ class TestRequireRootAgent:
         assert data["message"] == "root access granted"
 
     async def test_require_root_agent_with_delegated_agent(
-        self, delegated_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        delegated_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """require_root_agent should deny delegated agents."""
         app = FastAPI()
@@ -204,9 +202,7 @@ class TestRequireRootAgent:
 
         delegated_agent, raw_key = delegated_agent_key
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/admin", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 403
@@ -220,7 +216,9 @@ class TestRequireRootAgent:
         assert detail["current_trust_level"] == TrustLevel.DELEGATED.value
 
     async def test_require_root_agent_with_ephemeral_agent(
-        self, ephemeral_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        ephemeral_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """require_root_agent should deny ephemeral agents."""
         app = FastAPI()
@@ -232,9 +230,7 @@ class TestRequireRootAgent:
 
         ephemeral_agent, raw_key = ephemeral_agent_key
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/admin", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 403
@@ -245,7 +241,9 @@ class TestRequireTrustLevel:
     """Test require_trust_level dependency factory."""
 
     async def test_require_trust_level_root_allows_root(
-        self, root_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        root_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """Root trust level requirement should allow root agents."""
         app = FastAPI()
@@ -257,23 +255,21 @@ class TestRequireTrustLevel:
 
         @app.get("/sensitive")
         async def sensitive_endpoint(
-            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.ROOT))]
+            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.ROOT))],
         ):
             return {"access": "granted"}
 
         root_agent, raw_key = root_agent_key
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            response = await client.get(
-                "/sensitive", headers={"X-Agent-Key": raw_key}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/sensitive", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 200
 
     async def test_require_trust_level_root_denies_delegated(
-        self, delegated_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        delegated_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """Root trust level requirement should deny delegated agents."""
         app = FastAPI()
@@ -285,23 +281,22 @@ class TestRequireTrustLevel:
 
         @app.get("/sensitive")
         async def sensitive_endpoint(
-            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.ROOT))]
+            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.ROOT))],
         ):
             return {"access": "granted"}
 
         delegated_agent, raw_key = delegated_agent_key
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            response = await client.get(
-                "/sensitive", headers={"X-Agent-Key": raw_key}
-            )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/sensitive", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 403
 
     async def test_require_trust_level_delegated_allows_root_and_delegated(
-        self, root_agent_key: tuple[Agent, str], delegated_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        root_agent_key: tuple[Agent, str],
+        delegated_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """Delegated trust level requirement should allow root and delegated agents."""
         app = FastAPI()
@@ -313,13 +308,11 @@ class TestRequireTrustLevel:
 
         @app.get("/moderate")
         async def moderate_endpoint(
-            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.DELEGATED))]
+            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.DELEGATED))],
         ):
             return {"access": "granted", "trust_level": agent.trust_level.value}
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Root agent should be allowed
             root_agent, root_key = root_agent_key
             response = await client.get("/moderate", headers={"X-Agent-Key": root_key})
@@ -327,13 +320,13 @@ class TestRequireTrustLevel:
 
             # Delegated agent should be allowed
             delegated_agent, delegated_key = delegated_agent_key
-            response = await client.get(
-                "/moderate", headers={"X-Agent-Key": delegated_key}
-            )
+            response = await client.get("/moderate", headers={"X-Agent-Key": delegated_key})
             assert response.status_code == 200
 
     async def test_require_trust_level_delegated_denies_ephemeral(
-        self, ephemeral_agent_key: tuple[Agent, str], test_session_maker: async_sessionmaker[AsyncSession]
+        self,
+        ephemeral_agent_key: tuple[Agent, str],
+        test_session_maker: async_sessionmaker[AsyncSession],
     ):
         """Delegated trust level requirement should deny ephemeral agents."""
         app = FastAPI()
@@ -345,15 +338,13 @@ class TestRequireTrustLevel:
 
         @app.get("/moderate")
         async def moderate_endpoint(
-            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.DELEGATED))]
+            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.DELEGATED))],
         ):
             return {"access": "granted"}
 
         ephemeral_agent, raw_key = ephemeral_agent_key
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/moderate", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 403
@@ -379,13 +370,11 @@ class TestRequireTrustLevel:
 
         @app.get("/open")
         async def open_endpoint(
-            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.EPHEMERAL))]
+            agent: Annotated[Agent, Depends(require_trust_level(TrustLevel.EPHEMERAL))],
         ):
             return {"access": "granted"}
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # All agents should be allowed
             for agent, raw_key in [
                 root_agent_key,

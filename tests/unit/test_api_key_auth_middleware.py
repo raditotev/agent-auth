@@ -93,9 +93,7 @@ async def inactive_agent(db_session: AsyncSession) -> Agent:
 
 
 @pytest_asyncio.fixture
-async def valid_credential(
-    db_session: AsyncSession, test_agent: Agent
-) -> tuple[Credential, str]:
+async def valid_credential(db_session: AsyncSession, test_agent: Agent) -> tuple[Credential, str]:
     """Create a valid API key credential for the test agent."""
     credential_service = CredentialService(db_session)
     credential, raw_key = await credential_service.create_credential(
@@ -108,9 +106,7 @@ async def valid_credential(
 
 
 @pytest_asyncio.fixture
-async def expired_credential(
-    db_session: AsyncSession, test_agent: Agent
-) -> tuple[Credential, str]:
+async def expired_credential(db_session: AsyncSession, test_agent: Agent) -> tuple[Credential, str]:
     """Create an expired API key credential."""
     credential_service = CredentialService(db_session)
     credential, raw_key = await credential_service.create_credential(
@@ -124,9 +120,7 @@ async def expired_credential(
 
 
 @pytest_asyncio.fixture
-async def revoked_credential(
-    db_session: AsyncSession, test_agent: Agent
-) -> tuple[Credential, str]:
+async def revoked_credential(db_session: AsyncSession, test_agent: Agent) -> tuple[Credential, str]:
     """Create a revoked API key credential."""
     credential_service = CredentialService(db_session)
     credential, raw_key = await credential_service.create_credential(
@@ -183,9 +177,7 @@ class TestAuthenticationMiddleware:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            response = await client.get(
-                "/protected", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/protected", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 200
         data = response.json()
@@ -218,9 +210,7 @@ class TestAuthenticationMiddleware:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            response = await client.get(
-                "/protected", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/protected", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 401
         problem = response.json()
@@ -237,9 +227,7 @@ class TestAuthenticationMiddleware:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            response = await client.get(
-                "/protected", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/protected", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 401
         problem = response.json()
@@ -264,9 +252,7 @@ class TestAuthenticationMiddleware:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            response = await client.get(
-                "/protected", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/protected", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 401
         problem = response.json()
@@ -289,9 +275,7 @@ class TestAuthenticationMiddleware:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            response = await client.get(
-                "/protected", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/protected", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 200
 
@@ -317,9 +301,7 @@ class TestAuthenticationMiddleware:
         ) as client:
             # Make 3 requests
             for _ in range(3):
-                response = await client.get(
-                    "/protected", headers={"X-Agent-Key": raw_key}
-                )
+                response = await client.get("/protected", headers={"X-Agent-Key": raw_key})
                 assert response.status_code == 200
                 data = response.json()
                 assert data["agent_id"] == str(test_agent.id)
@@ -365,9 +347,7 @@ class TestAuthenticationMiddleware:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            response = await client.get(
-                "/check-state", headers={"X-Agent-Key": raw_key}
-            )
+            response = await client.get("/check-state", headers={"X-Agent-Key": raw_key})
 
         assert response.status_code == 200
         assert response.json() == {"ok": True}

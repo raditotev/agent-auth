@@ -15,9 +15,7 @@ from agentauth.services.credential import CredentialService
 class TestCredentialAPI:
     """Integration tests for credential endpoints."""
 
-    async def test_create_credential_success(
-        self, client: AsyncClient, root_agent: Agent
-    ) -> None:
+    async def test_create_credential_success(self, client: AsyncClient, root_agent: Agent) -> None:
         """Test POST /api/v1/credentials creates a credential."""
         response = await client.post(
             "/api/v1/credentials",
@@ -144,9 +142,7 @@ class TestCredentialAPI:
         await service.create_credential(agent_id=child_agent.id)
 
         # List root agent credentials
-        response = await client.get(
-            f"/api/v1/credentials?agent_id={str(root_agent.id)}"
-        )
+        response = await client.get(f"/api/v1/credentials?agent_id={str(root_agent.id)}")
 
         assert response.status_code == 200
         data = response.json()
@@ -247,9 +243,7 @@ class TestCredentialAPI:
         )
 
         # Rotate
-        response = await client.post(
-            f"/api/v1/credentials/{str(old_credential.id)}/rotate"
-        )
+        response = await client.post(f"/api/v1/credentials/{str(old_credential.id)}/rotate")
 
         assert response.status_code == 200
         data = response.json()

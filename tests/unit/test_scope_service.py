@@ -43,9 +43,9 @@ class TestScopeResolution:
             s.name = name
             return s
 
-        scopes_in_db = [make_scope(n) for n in [
-            "files.read", "files.write", "files.delete", "email.send"
-        ]]
+        scopes_in_db = [
+            make_scope(n) for n in ["files.read", "files.write", "files.delete", "email.send"]
+        ]
 
         service = ScopeService(mock_session)
         with patch.object(service, "get_all_scopes", return_value=scopes_in_db):
@@ -76,9 +76,9 @@ class TestScopeResolution:
             s.name = name
             return s
 
-        scopes_in_db = [make_scope(n) for n in [
-            "files.read", "files.write", "email.send", "api.read"
-        ]]
+        scopes_in_db = [
+            make_scope(n) for n in ["files.read", "files.write", "email.send", "api.read"]
+        ]
 
         mock_session = MagicMock()
         service = ScopeService(mock_session)

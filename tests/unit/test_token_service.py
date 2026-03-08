@@ -86,7 +86,9 @@ class TestTokenMinting:
 
         # Verify expiration times
         assert response.expires_at > response.issued_at
-        expected_expires = response.issued_at + timedelta(minutes=settings.access_token_expire_minutes)
+        expected_expires = response.issued_at + timedelta(
+            minutes=settings.access_token_expire_minutes
+        )
         assert abs((response.expires_at - expected_expires).total_seconds()) < 2
 
     async def test_mint_token_includes_all_claims(
@@ -567,6 +569,7 @@ class TestTokenJTIGeneration:
 
         # Should not contain characters that need URL encoding
         import string
+
         url_safe_chars = string.ascii_letters + string.digits + "-_"
         assert all(c in url_safe_chars for c in jti)
 

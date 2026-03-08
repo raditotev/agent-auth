@@ -126,9 +126,7 @@ class TestRefreshTokenFlow:
         await token_service.refresh_token_grant(initial.refresh_token)
 
         # Replay the same refresh token — triggers family revocation
-        refresh_claims = pyjwt.decode(
-            initial.refresh_token, options={"verify_signature": False}
-        )
+        refresh_claims = pyjwt.decode(initial.refresh_token, options={"verify_signature": False})
         access_jti = refresh_claims.get("access_token_jti")
         assert access_jti is not None
 

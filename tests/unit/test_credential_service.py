@@ -147,9 +147,7 @@ class TestCredentialService:
         assert creds[0].id == cred2.id
 
         # List with revoked
-        all_creds = await service.list_credentials(
-            agent_id=root_agent.id, include_revoked=True
-        )
+        all_creds = await service.list_credentials(agent_id=root_agent.id, include_revoked=True)
         assert len(all_creds) == 2
 
     async def test_verify_credential_success(
@@ -274,9 +272,7 @@ class TestCredentialService:
         assert new_verified is not None
         assert new_verified.id == new_cred.id
 
-    async def test_credential_scopes(
-        self, db_session: AsyncSession, root_agent: Agent
-    ) -> None:
+    async def test_credential_scopes(self, db_session: AsyncSession, root_agent: Agent) -> None:
         """Test credential with scopes."""
         service = CredentialService(db_session)
 
@@ -287,9 +283,7 @@ class TestCredentialService:
 
         assert credential.scopes == ["files.read", "files.write", "email.send"]
 
-    async def test_credential_metadata(
-        self, db_session: AsyncSession, root_agent: Agent
-    ) -> None:
+    async def test_credential_metadata(self, db_session: AsyncSession, root_agent: Agent) -> None:
         """Test credential with metadata."""
         service = CredentialService(db_session)
 
