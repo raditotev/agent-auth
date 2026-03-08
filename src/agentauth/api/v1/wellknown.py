@@ -51,6 +51,7 @@ async def agent_configuration() -> JSONResponse:
             "client_credentials",
             "refresh_token",
             "agent_delegation",
+            "urn:ietf:params:oauth:grant-type:token-exchange",
         ],
         "token_endpoint_auth_methods_supported": [
             "client_secret_post",
