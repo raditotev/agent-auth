@@ -17,6 +17,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from uuid_extensions.uuid7 import uuid7
 
 from agentauth.config import settings
+from agentauth.core.url_utils import mask_url as _mask_url
 
 logger = structlog.get_logger()
 
@@ -75,7 +76,7 @@ def get_engine() -> AsyncEngine:
             pool_size=10,
             max_overflow=20,
         )
-        logger.info("Database engine created", url=settings.database_url)
+        logger.info("Database engine created", url=_mask_url(str(settings.database_url)))
     return engine
 
 

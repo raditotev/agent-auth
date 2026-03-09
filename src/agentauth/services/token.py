@@ -524,7 +524,8 @@ class TokenService:
                 await redis_client.set(f"revoked:{jti}", "1", ex=ttl)
 
                 # Also invalidate any cached introspection results
-                cache_key = f"introspection:{token[-32:]}"
+                token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+                cache_key = f"introspection:{token_hash}"
                 await redis_client.delete(cache_key)
 
                 logger.info("Token revoked", jti=jti, token_type=token_type, ttl=ttl)

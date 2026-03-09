@@ -7,6 +7,7 @@ import redis.asyncio as redis
 import structlog
 
 from agentauth.config import settings
+from agentauth.core.url_utils import mask_url as _mask_url
 
 logger = structlog.get_logger()
 
@@ -26,7 +27,7 @@ class RedisClient:
                 encoding="utf-8",
                 decode_responses=True,
             )
-            logger.info("Redis client connected", url=settings.redis_url)
+            logger.info("Redis client connected", url=_mask_url(settings.redis_url))
 
     async def disconnect(self) -> None:
         """Disconnect from Redis server."""
