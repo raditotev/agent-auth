@@ -30,11 +30,12 @@ async def check_rate_limit(
         from agentauth.core.redis import get_redis_client
         redis_client = get_redis_client()
 
-        limit = (
-            settings.rate_limit_token_requests
-            if endpoint_type == "token"
-            else settings.rate_limit_api_requests
-        )
+        if endpoint_type == "token":
+            limit = settings.rate_limit_token_requests
+        elif endpoint_type == "bootstrap":
+            limit = settings.rate_limit_bootstrap_requests
+        else:
+            limit = settings.rate_limit_api_requests
         window = settings.rate_limit_window_seconds
         now = datetime.now(UTC)
         now_ts = now.timestamp()

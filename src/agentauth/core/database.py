@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
+from fastapi import Depends
 from sqlalchemy import TIMESTAMP, MetaData
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -125,4 +126,4 @@ async def close_db() -> None:
 
 
 # Type alias for dependency injection
-DbSession = Annotated[AsyncSession, "database session"]
+DbSession = Annotated[AsyncSession, Depends(get_session)]

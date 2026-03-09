@@ -1,13 +1,11 @@
 """API endpoints for credential management."""
 
-from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Request, status
 
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.core.exceptions import CredentialError, NotFoundError
 from agentauth.schemas.credential import (
     CredentialCreate,
@@ -36,7 +34,7 @@ router = APIRouter(prefix="/credentials", tags=["credentials"])
 )
 async def create_credential(
     credential_data: CredentialCreate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     request: Request,
 ) -> CredentialCreateResponse:
     """
@@ -81,7 +79,7 @@ async def create_credential(
     description="List all credentials (masked). Optionally filter by agent.",
 )
 async def list_credentials(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     agent_id: UUID | None = None,
     include_revoked: bool = False,
     limit: int = 50,
@@ -128,7 +126,7 @@ async def list_credentials(
 )
 async def get_credential(
     credential_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> CredentialDetailResponse:
     """
     Get credential details.
@@ -173,7 +171,7 @@ async def get_credential(
 )
 async def rotate_credential(
     credential_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     request: Request,
 ) -> CredentialRotateResponse:
     """
@@ -221,7 +219,7 @@ async def rotate_credential(
 )
 async def revoke_credential(
     credential_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     request: Request,
 ) -> CredentialDetailResponse:
     """

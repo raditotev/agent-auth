@@ -8,9 +8,8 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.dependencies import require_admin_key
 from agentauth.models.audit import AuditEvent, EventOutcome
 
@@ -26,7 +25,7 @@ router = APIRouter(prefix="/audit", tags=["Audit"])
 )
 async def list_audit_events(
     _: Annotated[None, Depends(require_admin_key)],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     event_type: str | None = Query(None, description="Filter by event type"),
     actor_id: UUID | None = Query(None, description="Filter by actor agent ID"),
     target_id: UUID | None = Query(None, description="Filter by target resource ID"),

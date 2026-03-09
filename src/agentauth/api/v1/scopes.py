@@ -5,9 +5,8 @@ from typing import Annotated
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.schemas.scope import ScopeCreate, ScopeListResponse, ScopeResponse, ScopeResolveResponse
 from agentauth.services.scope import ScopeService
 
@@ -19,7 +18,7 @@ router = APIRouter(prefix="/scopes", tags=["Scopes"])
 @router.post("", response_model=ScopeResponse, status_code=status.HTTP_201_CREATED)
 async def create_scope(
     payload: ScopeCreate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> ScopeResponse:
     """Register a new permission scope."""
     service = ScopeService(session)
@@ -39,7 +38,7 @@ async def create_scope(
 
 @router.get("", response_model=ScopeListResponse)
 async def list_scopes(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> ScopeListResponse:
     """List all registered scopes."""
     service = ScopeService(session)
@@ -53,7 +52,7 @@ async def list_scopes(
 @router.post("/resolve", response_model=ScopeResolveResponse)
 async def resolve_scopes(
     requested: list[str],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> ScopeResolveResponse:
     """Resolve wildcard scopes to concrete scope names."""
     service = ScopeService(session)

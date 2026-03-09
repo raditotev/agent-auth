@@ -285,8 +285,6 @@ class CryptoService:
                     algorithm=algorithm.value,
                 )
 
-        await self.session.commit()
-
         logger.info(
             "Key rotation completed",
             expired_count=len(expired_key_ids),

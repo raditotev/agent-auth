@@ -216,18 +216,27 @@ class RedisClient:
             return False
 
     async def delete_pattern(self, pattern: str) -> int:
-        """Delete all keys matching a glob pattern. Returns count of deleted keys."""
+        """Delete all keys matching a glob pattern. Returns count of deleted keys.
+
+        Uses SCAN to collect all matching keys and then deletes them in a single
+        pipeline call using UNLINK (non-blocking) to reduce round-trips from O(n)
+        to O(1) network calls.
+        """
         if self._client is None:
             await self.connect()
         assert self._client is not None
-        count = 0
         try:
-            async for key in self._client.scan_iter(pattern):
-                await self._client.delete(key)
-                count += 1
+            keys = [key async for key in self._client.scan_iter(pattern)]
+            if not keys:
+                return 0
+            async with self._client.pipeline(transaction=False) as pipe:
+                for key in keys:
+                    pipe.unlink(key)
+                results = await pipe.execute()
+            return sum(results)
         except Exception as e:
             logger.warning("Redis DELETE_PATTERN failed", pattern=pattern, error=str(e))
-        return count
+            return 0
 
 
 # Global Redis client instance

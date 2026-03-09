@@ -5,10 +5,9 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
 
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.models.policy import Policy
 from agentauth.schemas.policy import (
     PolicyCreate,
@@ -18,6 +17,9 @@ from agentauth.schemas.policy import (
     PolicyResponse,
     PolicyUpdate,
 )
+# Fields that may be modified via the update endpoint.
+# Explicit allowlist prevents accidental privilege escalation if the schema grows.
+_UPDATABLE_FIELDS = {"name", "description", "effect", "subjects", "resources", "actions", "conditions", "priority", "enabled"}
 
 logger = structlog.get_logger()
 
@@ -37,7 +39,7 @@ async def _invalidate_policy_cache() -> None:
 @router.post("", response_model=PolicyResponse, status_code=status.HTTP_201_CREATED)
 async def create_policy(
     payload: PolicyCreate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     request: Request,
 ) -> PolicyResponse:
     """Create a new authorization policy."""
@@ -83,13 +85,46 @@ async def create_policy(
 
 @router.get("", response_model=PolicyListResponse)
 async def list_policies(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
+    session: DbSession,
     enabled_only: bool = False,
 ) -> PolicyListResponse:
-    """List all policies."""
+    """List policies scoped to the caller's trust hierarchy.
+
+    Root agents see all policies system-wide.
+    Non-root agents see only policies created by themselves or their ancestors.
+    """
+    caller = getattr(request.state, "agent", None)
+    if caller is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "unauthorized", "error_description": "Authentication required to list policies"},
+        )
+
     query = select(Policy).order_by(Policy.priority.desc(), Policy.created_at.desc())
+
+    if not caller.is_root():
+        # Collect ancestor IDs (self + all parents) via a recursive CTE.
+        cte_sql = text("""
+            WITH RECURSIVE ancestors AS (
+                SELECT id FROM agents WHERE id = :agent_id
+                UNION ALL
+                SELECT a.id FROM agents a
+                INNER JOIN ancestors anc ON a.id = (
+                    SELECT parent_agent_id FROM agents WHERE id = anc.id
+                )
+            )
+            SELECT id FROM ancestors
+        """)
+        rows = await session.execute(cte_sql, {"agent_id": caller.id})
+        ancestor_ids: list[UUID] = [row[0] for row in rows.fetchall()]
+        if not ancestor_ids:
+            return PolicyListResponse(data=[], total=0)
+        query = query.where(Policy.created_by_agent_id.in_(ancestor_ids))
+
     if enabled_only:
         query = query.where(Policy.enabled.is_(True))
+
     result = await session.execute(query)
     policies = list(result.scalars().all())
     return PolicyListResponse(
@@ -227,7 +262,7 @@ async def policy_syntax() -> dict:
 @router.get("/{policy_id}", response_model=PolicyResponse)
 async def get_policy(
     policy_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> PolicyResponse:
     """Get a policy by ID."""
     result = await session.execute(select(Policy).where(Policy.id == policy_id))
@@ -244,7 +279,7 @@ async def get_policy(
 async def update_policy(
     policy_id: UUID,
     payload: PolicyUpdate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> PolicyResponse:
     """Update an existing policy."""
     result = await session.execute(select(Policy).where(Policy.id == policy_id))
@@ -257,7 +292,8 @@ async def update_policy(
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(policy, field, value)
+        if field in _UPDATABLE_FIELDS:
+            setattr(policy, field, value)
 
     await session.commit()
     await session.refresh(policy)
@@ -269,7 +305,7 @@ async def update_policy(
 @router.delete("/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_policy(
     policy_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> None:
     """Delete a policy."""
     result = await session.execute(select(Policy).where(Policy.id == policy_id))
@@ -288,7 +324,7 @@ async def delete_policy(
 @router.post("/evaluate", response_model=PolicyEvaluateResponse)
 async def evaluate_policy(
     payload: PolicyEvaluateRequest,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> PolicyEvaluateResponse:
     """Dry-run policy evaluation — check if an agent would be allowed to perform an action."""
     from agentauth.services.authorization import AuthorizationService

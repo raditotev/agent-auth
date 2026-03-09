@@ -1,0 +1,18 @@
+{
+  "id": "5.1",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "Bootstrap Endpoint Abuse Protection",
+  "description": "Add stricter rate limiting and abuse protection to /api/v1/agents/bootstrap and /api/v1/agents/quickstart endpoints. These endpoints bypass authentication and agent-based rate limiting, allowing unrestricted root agent creation. Implement stricter IP-based rate limits specific to these endpoints, and optionally require a bootstrap token or invite code for root agent creation in production.",
+  "validation": [
+    "Bootstrap and quickstart endpoints have dedicated IP-based rate limits stricter than general API",
+    "Rate limit is configurable via settings",
+    "429 response returned when limit exceeded with Retry-After header",
+    "Optional bootstrap token/invite code mechanism for production",
+    "Tests verify rate limiting on bootstrap endpoints",
+    "Tests verify abuse scenario (rapid agent creation) is blocked"
+  ],
+  "completed": true,
+  "dependencies": [
+    "4.4"
+  ]
+}

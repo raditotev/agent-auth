@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.core.exceptions import AuthenticationError, TokenError
 from agentauth.models.agent import Agent
 from agentauth.models.audit import ActorType, EventOutcome
@@ -53,7 +53,7 @@ async def _parse_token_body(request: Request) -> dict[str, Any]:
 
 @router.get("/jwks")
 async def get_jwks(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> dict[str, list[dict]]:
     """
     Get JSON Web Key Set (JWKS) containing public keys for token verification.
@@ -87,7 +87,7 @@ async def get_jwks(
 )
 async def token_endpoint(
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> TokenResponse:
     """
     OAuth 2.0 token endpoint supporting multiple grant types.
@@ -784,7 +784,7 @@ def _parse_scopes(scope_string: str | None) -> list[str]:
 
 @router.post("/token/introspect", response_model=TokenIntrospectionResponse)
 async def introspect_token(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     token: Annotated[str, Form()],
     token_type_hint: Annotated[str | None, Form()] = None,
 ) -> TokenIntrospectionResponse:
@@ -847,7 +847,7 @@ async def introspect_token(
 
 @router.post("/token/revoke")
 async def revoke_token(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     token: Annotated[str, Form()],
     token_type_hint: Annotated[str | None, Form()] = None,
 ) -> dict[str, str]:

@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
+from agentauth.api.v1.webhooks import WebhookSubscriptionCreate
 from agentauth.tasks.webhooks import (
     SUPPORTED_EVENTS,
     _sign_payload,
@@ -409,3 +411,76 @@ class TestDispatchEvent:
             await dispatch_event("agent.suspended", {})
 
         mock_deliver.assert_not_called()
+
+
+class TestWebhookSubscriptionCreateUrlValidation:
+    """Tests for HTTPS URL validation on WebhookSubscriptionCreate."""
+
+    def test_https_url_accepted_in_development(self) -> None:
+        """HTTPS URL is accepted in development environment."""
+        with patch("agentauth.api.v1.webhooks.settings") as mock_settings:
+            mock_settings.environment = "development"
+            schema = WebhookSubscriptionCreate(
+                url="https://example.com/webhook",
+                events=["credential.rotated"],
+            )
+        assert str(schema.url).startswith("https://")
+
+    def test_https_url_accepted_in_production(self) -> None:
+        """HTTPS URL is accepted in production environment."""
+        with patch("agentauth.api.v1.webhooks.settings") as mock_settings:
+            mock_settings.environment = "production"
+            schema = WebhookSubscriptionCreate(
+                url="https://example.com/webhook",
+                events=["credential.rotated"],
+            )
+        assert str(schema.url).startswith("https://")
+
+    def test_http_url_accepted_in_development(self) -> None:
+        """HTTP URL is allowed in development environment."""
+        with patch("agentauth.api.v1.webhooks.settings") as mock_settings:
+            mock_settings.environment = "development"
+            schema = WebhookSubscriptionCreate(
+                url="http://localhost:8080/webhook",
+                events=["credential.rotated"],
+            )
+        assert str(schema.url).startswith("http://")
+
+    def test_http_url_rejected_in_production(self) -> None:
+        """HTTP URL raises a clear validation error in production."""
+        with patch("agentauth.api.v1.webhooks.settings") as mock_settings:
+            mock_settings.environment = "production"
+            with pytest.raises(ValidationError) as exc_info:
+                WebhookSubscriptionCreate(
+                    url="http://example.com/webhook",
+                    events=["credential.rotated"],
+                )
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert errors[0]["loc"] == ("url",)
+        assert "HTTPS" in errors[0]["msg"]
+        assert "http" in errors[0]["msg"].lower()
+
+    def test_http_url_rejected_in_staging(self) -> None:
+        """HTTP URL raises a validation error in staging environment."""
+        with patch("agentauth.api.v1.webhooks.settings") as mock_settings:
+            mock_settings.environment = "staging"
+            with pytest.raises(ValidationError) as exc_info:
+                WebhookSubscriptionCreate(
+                    url="http://example.com/webhook",
+                    events=["credential.rotated"],
+                )
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert errors[0]["loc"] == ("url",)
+        assert "HTTPS" in errors[0]["msg"]
+
+    def test_invalid_url_rejected(self) -> None:
+        """A non-URL string is rejected by Pydantic HttpUrl validation."""
+        with patch("agentauth.api.v1.webhooks.settings") as mock_settings:
+            mock_settings.environment = "development"
+            with pytest.raises(ValidationError):
+                WebhookSubscriptionCreate(
+                    url="not-a-url",
+                    events=["credential.rotated"],
+                )

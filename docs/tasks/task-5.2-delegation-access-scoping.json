@@ -1,0 +1,18 @@
+{
+  "id": "5.2",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "Delegation List Access Control Scoping",
+  "description": "The list_delegations endpoint (api/v1/delegations.py) returns all delegations system-wide without access control scoping. Any authenticated agent can see every delegation between any agents, leaking the internal delegation topology. Filter delegations to those where the caller is the delegator, the delegate, or an ancestor of either, consistent with the subtree scoping pattern used in list_agents.",
+  "validation": [
+    "list_delegations only returns delegations involving the caller's subtree",
+    "Caller can see delegations where they are delegator or delegate",
+    "Caller can see delegations involving their descendant agents",
+    "Agents cannot see delegations in unrelated trust hierarchies",
+    "Tests verify scoping with multi-agent scenarios",
+    "Tests verify root agent can see all delegations"
+  ],
+  "completed": true,
+  "dependencies": [
+    "3.5"
+  ]
+}

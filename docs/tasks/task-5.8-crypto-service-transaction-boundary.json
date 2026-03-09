@@ -1,0 +1,17 @@
+{
+  "id": "5.8",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "CryptoService Transaction Boundary Fix",
+  "description": "CryptoService.rotate_keys (services/crypto.py:288) calls session.commit() directly inside the service. Services should not commit \u2014 the caller (route handler or lifecycle manager) should own the transaction boundary. If rotate_keys is composed with other operations in a single transaction, the premature commit could leave the database inconsistent on subsequent failures. Remove the commit from the service and ensure callers manage the transaction.",
+  "validation": [
+    "CryptoService.rotate_keys does not call session.commit()",
+    "Callers of rotate_keys manage their own transaction boundaries",
+    "Lifespan startup still correctly commits after key rotation",
+    "No change in behavior for existing flows",
+    "Tests verify transaction boundary is respected"
+  ],
+  "completed": true,
+  "dependencies": [
+    "2.1"
+  ]
+}

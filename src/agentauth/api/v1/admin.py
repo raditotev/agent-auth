@@ -4,9 +4,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.dependencies import require_admin_key
 from agentauth.models.agent import Agent
 from agentauth.models.audit import AuditEvent
@@ -25,7 +24,7 @@ router = APIRouter(tags=["admin"])
 )
 async def get_stats(
     _: Annotated[None, Depends(require_admin_key)],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> StatsResponse:
     """
     Return aggregate counts for admin dashboards and monitoring.

@@ -1,0 +1,17 @@
+{
+  "id": "5.3",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "Policy List Access Control Scoping",
+  "description": "The list_policies endpoint (api/v1/policies.py) returns all policies system-wide without access control scoping. Any authenticated agent can list all policies, including those created by agents in other trust hierarchies. Filter to policies created by the caller or their ancestors, consistent with the authorization evaluation scoping in AuthorizationService._load_policies.",
+  "validation": [
+    "list_policies only returns policies created by the caller or their ancestors",
+    "Agents cannot see policies from unrelated trust hierarchies",
+    "Policy evaluation scoping remains unchanged",
+    "Tests verify scoping with multi-agent scenarios",
+    "Tests verify root agent can see all policies"
+  ],
+  "completed": true,
+  "dependencies": [
+    "3.2"
+  ]
+}

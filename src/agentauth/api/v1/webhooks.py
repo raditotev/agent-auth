@@ -6,12 +6,11 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.config import settings
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.core.security import encrypt_secret
 from agentauth.models.webhook import WebhookDeliveryLog, WebhookSubscription
 
@@ -28,8 +27,20 @@ SUPPORTED_EVENTS = [
 
 
 class WebhookSubscriptionCreate(BaseModel):
-    url: str = Field(..., description="HTTPS endpoint to deliver events to")
+    url: HttpUrl = Field(..., description="HTTPS endpoint to deliver events to")
     events: list[str] = Field(..., description="Event types to subscribe to")
+
+    @field_validator("url")
+    @classmethod
+    def require_https_in_production(cls, v: HttpUrl) -> HttpUrl:
+        """Require HTTPS scheme in production/staging; allow HTTP in development."""
+        if v.scheme != "https" and settings.environment in ("production", "staging"):
+            raise ValueError(
+                "Webhook URL must use HTTPS scheme. "
+                "Delivering events over HTTP exposes payload and signature to interception. "
+                f"Received scheme: '{v.scheme}'."
+            )
+        return v
 
 
 class WebhookSubscriptionResponse(BaseModel):
@@ -47,7 +58,7 @@ class WebhookSubscriptionResponse(BaseModel):
 async def create_subscription(
     payload: WebhookSubscriptionCreate,
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> WebhookSubscriptionResponse:
     """Register a webhook subscription."""
     unknown_events = set(payload.events) - set(SUPPORTED_EVENTS)
@@ -72,7 +83,7 @@ async def create_subscription(
     encrypted_secret = encrypt_secret(secret, settings.secret_key)
     subscription = WebhookSubscription(
         agent_id=agent_id,
-        url=payload.url,
+        url=str(payload.url),
         secret=encrypted_secret,
         events=payload.events,
         enabled=True,
@@ -90,7 +101,7 @@ async def create_subscription(
 
 @router.get("", response_model=list[WebhookSubscriptionResponse])
 async def list_subscriptions(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> list[WebhookSubscriptionResponse]:
     """List all webhook subscriptions. The signing secret is never included in list responses."""
     result = await session.execute(select(WebhookSubscription).order_by(WebhookSubscription.created_at.desc()))
@@ -105,7 +116,7 @@ async def list_subscriptions(
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_subscription(
     subscription_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> None:
     """Delete a webhook subscription."""
     result = await session.execute(
@@ -124,7 +135,7 @@ async def delete_subscription(
 @router.get("/{subscription_id}/logs")
 async def get_delivery_logs(
     subscription_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     limit: int = 50,
 ) -> list[dict]:
     """Get delivery logs for a subscription."""

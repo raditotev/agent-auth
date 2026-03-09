@@ -5,10 +5,9 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import or_, select
 
-from agentauth.core.database import get_session
+from agentauth.core.database import DbSession
 from agentauth.models.delegation import Delegation
 from agentauth.schemas.delegation import (
     DelegationChainResponse,
@@ -17,6 +16,7 @@ from agentauth.schemas.delegation import (
     DelegationResponse,
 )
 from agentauth.services.delegation import DelegationService
+from agentauth.services.identity import IdentityService
 
 logger = structlog.get_logger()
 
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/delegations", tags=["Delegations"])
 @router.post("", response_model=DelegationResponse, status_code=status.HTTP_201_CREATED)
 async def create_delegation(
     payload: DelegationCreate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     request: Request,
 ) -> DelegationResponse:
     """Create a new delegation from the authenticated agent to a delegate."""
@@ -63,15 +63,49 @@ async def create_delegation(
 
 @router.get("", response_model=DelegationListResponse)
 async def list_delegations(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
+    session: DbSession,
     active_only: bool = True,
 ) -> DelegationListResponse:
-    """List delegations."""
+    """List delegations scoped to the caller's subtree.
+
+    Root agents see all delegations system-wide.
+    Non-root agents see only delegations where they are the delegator, the
+    delegate, or an ancestor of either party (i.e. the delegation involves
+    at least one agent in the caller's subtree).
+    """
+    caller = getattr(request.state, "agent", None)
+    if caller is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "unauthorized", "error_description": "Authentication required to list delegations"},
+        )
+
     query = select(Delegation).order_by(Delegation.created_at.desc())
+
+    if not caller.is_root():
+        # Restrict to delegations involving any agent in the caller's subtree.
+        identity_service = IdentityService(session)
+        subtree_ids = await identity_service.get_subtree_agent_ids(caller.id)
+        query = query.where(
+            or_(
+                Delegation.delegator_agent_id.in_(subtree_ids),
+                Delegation.delegate_agent_id.in_(subtree_ids),
+            )
+        )
+
     result = await session.execute(query)
     all_delegations = list(result.scalars().all())
     if active_only:
         all_delegations = [d for d in all_delegations if d.is_active()]
+
+    logger.debug(
+        "list_delegations",
+        caller_id=str(caller.id),
+        is_root=caller.is_root(),
+        count=len(all_delegations),
+    )
+
     return DelegationListResponse(
         data=[DelegationResponse.from_model(d) for d in all_delegations],
         total=len(all_delegations),
@@ -81,7 +115,7 @@ async def list_delegations(
 @router.get("/{delegation_id}/chain", response_model=DelegationChainResponse)
 async def get_delegation_chain(
     delegation_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> DelegationChainResponse:
     """Get the full delegation chain for a delegation."""
     service = DelegationService(session)
@@ -108,7 +142,7 @@ async def get_delegation_chain(
 @router.delete("/{delegation_id}", status_code=status.HTTP_200_OK)
 async def revoke_delegation(
     delegation_id: UUID,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     cascade: bool = True,
 ) -> dict:
     """Revoke a delegation and optionally all downstream delegations."""

@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with session_maker() as session:
         await ScopeService(session).seed_default_scopes()
         await CryptoService(session).rotate_keys()
+        await session.commit()
 
     yield
 

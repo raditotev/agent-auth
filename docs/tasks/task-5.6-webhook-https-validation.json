@@ -1,0 +1,15 @@
+{
+  "id": "5.6",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "Webhook URL HTTPS Validation",
+  "description": "The WebhookSubscriptionCreate schema (api/v1/webhooks.py:31) defines url as a plain str without scheme validation. Webhook payloads contain event data and are signed with HMAC secrets — delivering over HTTP exposes both payload and signature. Use Pydantic HttpUrl and add a validator to require https:// scheme in production, or at minimum block http://.",
+  "validation": [
+    "Webhook URL field uses Pydantic HttpUrl type",
+    "HTTPS scheme is required in production",
+    "HTTP scheme is optionally allowed in development/testing",
+    "Clear error message when non-HTTPS URL is provided",
+    "Tests verify URL validation"
+  ],
+  "completed": true,
+  "dependencies": ["4.5"]
+}

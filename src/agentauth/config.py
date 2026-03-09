@@ -80,6 +80,24 @@ class Settings(BaseSettings):
         default=60,
         description="Sliding window duration for rate limiting (seconds)",
     )
+    rate_limit_bootstrap_requests: int = Field(
+        default=5,
+        description=(
+            "Max bootstrap/quickstart requests per window per IP. "
+            "Stricter than general API limit since these endpoints bypass authentication."
+        ),
+    )
+
+    # Bootstrap / root-agent self-registration
+    bootstrap_token: str | None = Field(
+        default=None,
+        description=(
+            "If set, requests to /agents/bootstrap and /agents/quickstart must supply "
+            "this value in the X-Bootstrap-Token header. Strongly recommended in production "
+            "to prevent anonymous root-agent creation. Leave unset for open registration "
+            "(development only)."
+        ),
+    )
 
     # Policy cache
     policy_cache_ttl_seconds: int = Field(

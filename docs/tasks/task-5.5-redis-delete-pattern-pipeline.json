@@ -1,0 +1,14 @@
+{
+  "id": "5.5",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "Redis delete_pattern Pipeline Optimization",
+  "description": "The delete_pattern method in core/redis.py:217-229 iterates over keys matching a pattern and deletes them one at a time, generating O(n) Redis round-trips. This is called on every policy mutation to clear the authz:* cache. Use a Redis pipeline to batch the deletes, or use UNLINK for non-blocking deletion.",
+  "validation": [
+    "delete_pattern uses Redis pipeline for batched deletes",
+    "Performance improved for large key sets",
+    "Existing behavior preserved (returns count of deleted keys)",
+    "Tests verify batch deletion works correctly"
+  ],
+  "completed": true,
+  "dependencies": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "5.4",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "Policy Update Field Allowlist",
+  "description": "The update_policy handler (api/v1/policies.py:258-260) uses setattr for all fields from the Pydantic payload without restricting which fields are updatable. Add an explicit _UPDATABLE_FIELDS allowlist, consistent with the pattern used in IdentityService.update_agent (services/identity.py:227-234). This is a defense-in-depth measure to prevent accidental privilege escalation if the schema is modified.",
+  "validation": [
+    "Policy update uses an explicit _UPDATABLE_FIELDS allowlist",
+    "Only intended fields can be modified via the update endpoint",
+    "Attempts to set non-updatable fields are silently ignored or return error",
+    "Pattern matches IdentityService.update_agent approach",
+    "Tests verify non-updatable fields are rejected"
+  ],
+  "completed": true,
+  "dependencies": [
+    "3.2"
+  ]
+}

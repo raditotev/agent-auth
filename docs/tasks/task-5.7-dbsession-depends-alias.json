@@ -1,0 +1,14 @@
+{
+  "id": "5.7",
+  "phase": "Phase 5 - Security Hardening",
+  "title": "DbSession Depends Type Alias",
+  "description": "The DbSession type alias in core/database.py:127 is defined as Annotated[AsyncSession, 'database session'] but does not use Depends(get_session). Every route handler repeats the full Annotated[AsyncSession, Depends(get_session)] annotation. Change DbSession to use Depends(get_session) and update all route handlers to use the alias, per CLAUDE.md conventions.",
+  "validation": [
+    "DbSession alias uses Annotated[AsyncSession, Depends(get_session)]",
+    "All route handlers use DbSession instead of inline Depends",
+    "No functional change to dependency injection behavior",
+    "All existing tests pass"
+  ],
+  "completed": true,
+  "dependencies": []
+}

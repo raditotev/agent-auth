@@ -1,13 +1,16 @@
 """Agent management API endpoints."""
 
+import secrets
 from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentauth.core.database import get_session
+from agentauth.config import settings
+from agentauth.core.database import DbSession
+from agentauth.core.rate_limit import check_rate_limit
 from agentauth.models.agent import Agent, AgentStatus
 from agentauth.schemas.agent import (
     AgentBootstrapCreate,
@@ -23,6 +26,89 @@ from agentauth.services.identity import IdentityService
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+def _get_client_ip(request: Request) -> str:
+    """Extract the real client IP, honouring X-Forwarded-For when present."""
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+async def _bootstrap_rate_limit(request: Request) -> None:
+    """
+    FastAPI dependency: enforce IP-based rate limiting on bootstrap endpoints.
+
+    Bootstrap and quickstart bypass agent authentication, so they need their
+    own stricter per-IP sliding-window limit (configurable via
+    RATE_LIMIT_BOOTSTRAP_REQUESTS / rate_limit_window_seconds).
+
+    Raises:
+        HTTPException 429 with Retry-After when the limit is exceeded.
+    """
+    ip = _get_client_ip(request)
+    identifier = f"ip:{ip}"
+    allowed, rl_headers = await check_rate_limit(identifier, "bootstrap")
+
+    if not allowed:
+        logger.warning(
+            "bootstrap_rate_limit_exceeded",
+            ip=ip,
+            path=request.url.path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "type": "https://agentauth.dev/problems/rate-limit-exceeded",
+                "title": "Too Many Requests",
+                "status": 429,
+                "detail": (
+                    "Bootstrap rate limit exceeded. "
+                    "Please retry after the indicated period."
+                ),
+                "instance": request.url.path,
+            },
+            headers=rl_headers,
+        )
+
+    # Stash rate-limit headers so the route handler can forward them
+    request.state.bootstrap_rl_headers = rl_headers
+
+
+def _check_bootstrap_token(
+    x_bootstrap_token: Annotated[str | None, Header()] = None,
+) -> None:
+    """
+    FastAPI dependency: validate the optional bootstrap invite token.
+
+    When BOOTSTRAP_TOKEN is configured in settings every request to
+    bootstrap/quickstart must supply a matching X-Bootstrap-Token header.
+    A missing or incorrect token produces 403 Forbidden.
+
+    When BOOTSTRAP_TOKEN is unset (default) this dependency is a no-op --
+    open registration is allowed (development only).
+    """
+    if settings.bootstrap_token is None:
+        return  # Open registration -- no invite code required
+
+    if not x_bootstrap_token or not secrets.compare_digest(
+        x_bootstrap_token, settings.bootstrap_token
+    ):
+        logger.warning("bootstrap_token_invalid", provided=bool(x_bootstrap_token))
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "type": "https://agentauth.dev/problems/bootstrap-token-required",
+                "title": "Bootstrap Token Required",
+                "status": 403,
+                "detail": (
+                    "A valid X-Bootstrap-Token header is required to register a root agent "
+                    "in this environment."
+                ),
+                "instance": "/api/v1/agents/bootstrap",
+            },
+        )
 
 
 def agent_to_response(agent: "Agent") -> AgentResponse:
@@ -46,7 +132,7 @@ def agent_to_response(agent: "Agent") -> AgentResponse:
 
 
 def get_identity_service(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
 ) -> IdentityService:
     """Dependency for getting identity service."""
     return IdentityService(session)
@@ -60,16 +146,20 @@ def get_identity_service(
     description=(
         "Registers a root agent, issues an API key, and returns a ready-to-use access token "
         "in a single request. Ideal for programmatic agent bootstrapping. "
-        "The API key is shown **once** — store it securely."
+        "The API key is shown **once** -- store it securely."
     ),
+    dependencies=[
+        Depends(_bootstrap_rate_limit),
+        Depends(_check_bootstrap_token),
+    ],
 )
 async def quickstart(
     data: AgentBootstrapCreate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: DbSession,
     identity_service: Annotated[IdentityService, Depends(get_identity_service)],
 ) -> AgentQuickstartResponse:
     """
-    Compound bootstrap endpoint: register → credential → token in one round-trip.
+    Compound bootstrap endpoint: register -> credential -> token in one round-trip.
 
     Equivalent to:
     1. POST /agents/bootstrap
@@ -89,7 +179,7 @@ async def quickstart(
         credential, raw_key = await credential_service.create_credential(
             agent_id=agent.id,
             credential_type=CredentialType.API_KEY,
-            scopes=None,  # no restriction — use all available
+            scopes=None,  # no restriction -- use all available
             expires_at=None,
             metadata=None,
             actor_id=agent.id,
@@ -138,6 +228,10 @@ async def quickstart(
     summary="Bootstrap a root agent",
     description="Self-register a new root agent with minimal credentials. "
     "Root agents have no parent and serve as trust anchors for their subtree.",
+    dependencies=[
+        Depends(_bootstrap_rate_limit),
+        Depends(_check_bootstrap_token),
+    ],
 )
 async def bootstrap_root_agent(
     data: AgentBootstrapCreate,
@@ -211,7 +305,7 @@ async def create_agent(
     summary="List agents",
     description=(
         "List agents with optional filtering by parent and status. "
-        "Results are scoped to the caller's subtree — root agents see all agents, "
+        "Results are scoped to the caller's subtree -- root agents see all agents, "
         "non-root agents see only their own descendants. "
         "Supports pagination via limit and offset parameters."
     ),
@@ -233,17 +327,8 @@ async def list_agents(
 ) -> AgentListResponse:
     """List agents scoped to the caller's subtree."""
     try:
-        # Determine subtree restriction based on the authenticated agent's position.
-        # Root agents (trust_level=ROOT) see the entire agent tree.
-        # Non-root agents are restricted to their own subtree (inclusive).
-        # If no authenticated agent is present (should not happen on a protected
-        # route), return an empty set as a safe default.
         caller = getattr(request.state, "agent", None)
         if caller is None:
-            # This should never happen on a protected route — AuthenticationMiddleware
-            # always rejects unauthenticated requests before reaching here.
-            # If it does, signal a 401 rather than silently returning an empty list,
-            # so the misconfiguration is immediately visible.
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required",
