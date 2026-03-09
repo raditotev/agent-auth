@@ -38,6 +38,15 @@ class Settings(BaseSettings):
         default="dev-secret-key-change-in-production",
         description="Secret key for signing tokens",
     )
+    signing_key_encryption_key: str = Field(
+        default="",
+        description=(
+            "Dedicated AES encryption key for storing private signing keys at rest. "
+            "Must be set independently from secret_key in production — if both share "
+            "the same value, a single compromise exposes token signing AND key storage. "
+            "Falls back to secret_key when empty (development only)."
+        ),
+    )
     access_token_expire_minutes: int = Field(
         default=15,
         description="Access token expiration time in minutes",
@@ -56,6 +65,32 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default=["*"],
         description="CORS allowed origins",
+    )
+
+    # Rate limiting
+    rate_limit_token_requests: int = Field(
+        default=30,
+        description="Max requests per window for token endpoints (per agent or IP)",
+    )
+    rate_limit_api_requests: int = Field(
+        default=300,
+        description="Max requests per window for management API endpoints (per agent or IP)",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        description="Sliding window duration for rate limiting (seconds)",
+    )
+
+    # Policy cache
+    policy_cache_ttl_seconds: int = Field(
+        default=60,
+        description="TTL for cached authorization decisions in Redis (seconds)",
+    )
+
+    # Webhook delivery
+    webhook_max_delivery_attempts: int = Field(
+        default=5,
+        description="Maximum webhook delivery attempts before giving up",
     )
 
     # Admin (platform operators only — not agent auth)
@@ -77,12 +112,33 @@ class Settings(BaseSettings):
                 "SECRET_KEY is using the default dev value. "
                 "Set a strong, unique SECRET_KEY environment variable."
             )
-        if self.environment == "production" and warnings:
+        if not self.signing_key_encryption_key:
+            warnings.append(
+                "SIGNING_KEY_ENCRYPTION_KEY is not set — private signing keys are "
+                "encrypted with SECRET_KEY. Set a separate SIGNING_KEY_ENCRYPTION_KEY "
+                "so that compromising the token-signing secret does not also expose "
+                "the key-at-rest encryption."
+            )
+        elif self.signing_key_encryption_key == self.secret_key:
+            warnings.append(
+                "SIGNING_KEY_ENCRYPTION_KEY is identical to SECRET_KEY. "
+                "Use a distinct value so the two secrets provide independent protection."
+            )
+        if self.environment in ("production", "staging") and warnings:
             raise ValueError(
-                "Refusing to start in production with insecure defaults: "
+                f"Refusing to start in {self.environment} with insecure defaults: "
                 + "; ".join(warnings)
             )
         return warnings
+
+    @property
+    def effective_signing_key_encryption_key(self) -> str:
+        """Return the key used to encrypt private signing keys at rest.
+
+        Falls back to secret_key in development when
+        signing_key_encryption_key is not configured.
+        """
+        return self.signing_key_encryption_key or self.secret_key
 
 
 # Global settings instance

@@ -1,8 +1,10 @@
 """Celery tasks for async webhook delivery with retry (Task 4.5)."""
 
+import asyncio
 import hashlib
 import hmac
 import json
+import random
 import time
 from typing import Any
 
@@ -11,7 +13,6 @@ import structlog
 
 logger = structlog.get_logger()
 
-MAX_ATTEMPTS = 5
 SUPPORTED_EVENTS = {
     "credential.rotated",
     "agent.suspended",
@@ -36,11 +37,13 @@ async def deliver_webhook(
     Retries up to MAX_ATTEMPTS times with exponential backoff.
     Records each attempt in the delivery log.
     """
+    from agentauth.config import settings
     from agentauth.core.database import get_session_maker
     from agentauth.models.webhook import WebhookDeliveryLog, WebhookSubscription
     from sqlalchemy import select
     from uuid import UUID
 
+    max_attempts = settings.webhook_max_delivery_attempts
     session_maker = get_session_maker()
 
     async with session_maker() as session:
@@ -73,7 +76,7 @@ async def deliver_webhook(
         }
 
         async with httpx.AsyncClient(timeout=10.0) as http:
-            for attempt in range(1, MAX_ATTEMPTS + 1):
+            for attempt in range(1, max_attempts + 1):
                 status_code: int | None = None
                 success = False
                 error_msg: str | None = None
@@ -124,8 +127,9 @@ async def deliver_webhook(
                 if success:
                     return
 
-                if attempt < MAX_ATTEMPTS:
-                    wait = 2 ** attempt  # exponential backoff: 2, 4, 8, 16s
+                if attempt < max_attempts:
+                    # Exponential backoff with jitter to avoid thundering herd
+                    wait = 2 ** attempt + random.uniform(0, 1)
                     await asyncio.sleep(wait)
 
     logger.error(
@@ -133,9 +137,6 @@ async def deliver_webhook(
         subscription_id=subscription_id,
         event_type=event_type,
     )
-
-
-import asyncio  # noqa: E402
 
 
 async def dispatch_event(event_type: str, payload: dict[str, Any]) -> None:

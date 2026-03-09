@@ -186,8 +186,10 @@ class TokenService:
             TokenError: If signing fails
         """
         try:
-            # Decrypt private key from storage and load PEM
-            private_pem = decrypt_secret(signing_key.private_key_pem, settings.secret_key)
+            # Decrypt private key from storage using the dedicated encryption key.
+            private_pem = decrypt_secret(
+                signing_key.private_key_pem, settings.effective_signing_key_encryption_key
+            )
             private_key_obj = serialization.load_pem_private_key(
                 private_pem.encode("utf-8"),
                 password=None,

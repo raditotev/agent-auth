@@ -1,20 +1,17 @@
 """Authorization service — policy evaluation engine."""
 
-import json
 from typing import Any
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentauth.config import settings
 from agentauth.models.policy import Policy, PolicyEffect
 from agentauth.schemas.policy import PolicyEvaluateResponse
 
 logger = structlog.get_logger()
-
-# Redis cache TTL for compiled policy sets (seconds)
-POLICY_CACHE_TTL = 60
 
 
 class AuthorizationService:
@@ -59,7 +56,7 @@ class AuthorizationService:
         if cached is not None:
             return cached
 
-        policies = await self._load_policies()
+        policies = await self._load_policies(agent_id)
 
         allow_match: Policy | None = None
         deny_match: Policy | None = None
@@ -112,11 +109,36 @@ class AuthorizationService:
         await self._cache_decision(agent_id, action, resource, ctx, result)
         return result
 
-    async def _load_policies(self) -> list[Policy]:
-        """Load all enabled policies ordered by priority descending."""
+    async def _load_policies(self, agent_id: UUID) -> list[Policy]:
+        """Load enabled policies scoped to the given agent's trust chain.
+
+        Only policies whose creator is an ancestor of (or is) the requesting
+        agent are loaded. This prevents policies from one root-agent tree from
+        affecting agents in a different tree.
+        """
+        # Walk from agent_id up to the root, collecting every ancestor ID.
+        ancestor_sql = text("""
+            WITH RECURSIVE ancestors AS (
+                SELECT id, parent_agent_id FROM agents WHERE id = :agent_id
+                UNION ALL
+                SELECT a.id, a.parent_agent_id
+                FROM agents a
+                INNER JOIN ancestors anc ON a.id = anc.parent_agent_id
+            )
+            SELECT id FROM ancestors
+        """)
+        ancestor_result = await self.session.execute(
+            ancestor_sql, {"agent_id": agent_id}
+        )
+        ancestor_ids = [row[0] for row in ancestor_result.fetchall()]
+
+        if not ancestor_ids:
+            return []
+
         result = await self.session.execute(
             select(Policy)
             .where(Policy.enabled.is_(True))
+            .where(Policy.created_by_agent_id.in_(ancestor_ids))
             .order_by(Policy.priority.desc())
         )
         return list(result.scalars().all())
@@ -257,7 +279,7 @@ class AuthorizationService:
             await redis_client.set_json(
                 cache_key,
                 result.model_dump(mode="json"),
-                ex=POLICY_CACHE_TTL,
+                ex=settings.policy_cache_ttl_seconds,
             )
         except Exception as e:
             logger.debug("Authorization cache write failed", error=str(e))

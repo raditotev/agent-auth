@@ -7,12 +7,6 @@ import structlog
 
 logger = structlog.get_logger()
 
-# Default limits (requests per window)
-# Token endpoints are stricter; management API is more lenient.
-RATE_LIMIT_TOKEN_REQUESTS = 30   # per minute
-RATE_LIMIT_API_REQUESTS = 300    # per minute
-RATE_LIMIT_WINDOW_SECONDS = 60
-
 
 async def check_rate_limit(
     identifier: str,
@@ -22,7 +16,7 @@ async def check_rate_limit(
     Check whether a request is within the rate limit using a sliding window.
 
     Uses Redis sorted sets: each request is stored with its timestamp as score.
-    The window is the last RATE_LIMIT_WINDOW_SECONDS seconds.
+    Limits and window duration are loaded from application settings.
 
     Args:
         identifier: Unique key for the client (e.g. "agent:{agent_id}")
@@ -32,13 +26,19 @@ async def check_rate_limit(
         (allowed, headers) where headers contain X-RateLimit-* values.
     """
     try:
+        from agentauth.config import settings
         from agentauth.core.redis import get_redis_client
         redis_client = get_redis_client()
 
-        limit = RATE_LIMIT_TOKEN_REQUESTS if endpoint_type == "token" else RATE_LIMIT_API_REQUESTS
+        limit = (
+            settings.rate_limit_token_requests
+            if endpoint_type == "token"
+            else settings.rate_limit_api_requests
+        )
+        window = settings.rate_limit_window_seconds
         now = datetime.now(UTC)
         now_ts = now.timestamp()
-        window_start = now_ts - RATE_LIMIT_WINDOW_SECONDS
+        window_start = now_ts - window
 
         redis_key = f"ratelimit:{endpoint_type}:{identifier}"
 
@@ -51,11 +51,11 @@ async def check_rate_limit(
         headers = {
             "X-RateLimit-Limit": str(limit),
             "X-RateLimit-Remaining": str(max(0, limit - current_count - 1)),
-            "X-RateLimit-Reset": str(int(now_ts + RATE_LIMIT_WINDOW_SECONDS)),
+            "X-RateLimit-Reset": str(int(now_ts + window)),
         }
 
         if current_count >= limit:
-            headers["Retry-After"] = str(RATE_LIMIT_WINDOW_SECONDS)
+            headers["Retry-After"] = str(window)
             logger.warning(
                 "Rate limit exceeded",
                 identifier=identifier,
@@ -68,7 +68,7 @@ async def check_rate_limit(
         # Record this request with a stable unique member key
         await redis_client.zadd(redis_key, {f"{now_ts}:{secrets.token_hex(8)}": now_ts})
         # Set key TTL to auto-expire old entries
-        await redis_client.expire(redis_key, RATE_LIMIT_WINDOW_SECONDS * 2)
+        await redis_client.expire(redis_key, window * 2)
 
         return True, headers
 

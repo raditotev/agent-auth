@@ -31,7 +31,15 @@ class AuditService:
         metadata: dict[str, Any] | None = None,
     ) -> AuditEvent:
         """
-        Record an audit event.
+        Record an audit event atomically with the surrounding operation.
+
+        The event is written inside a SAVEPOINT (nested transaction). This means:
+        - If the outer transaction commits, the audit event is committed with it.
+        - If the audit write itself fails, only the SAVEPOINT is rolled back;
+          the caller's session remains valid so the main operation can still
+          commit. The failure is logged as an error but not re-raised.
+        - If the outer transaction rolls back (e.g. main op failure), the
+          audit event is rolled back with it.
 
         Args:
             event_type: Type of event (e.g., "credential.created")
@@ -57,8 +65,24 @@ class AuditService:
             event_metadata=metadata or {},
         )
 
-        self.session.add(event)
-        await self.session.flush()
+        try:
+            async with self.session.begin_nested():
+                self.session.add(event)
+        except Exception as exc:
+            # Audit write failure must never block the main operation.
+            # Log with full context so the gap can be detected and backfilled.
+            logger.error(
+                "audit_write_failed",
+                event_type=event_type,
+                action=action,
+                outcome=outcome.value,
+                actor_type=actor_type.value,
+                actor_id=str(actor_id) if actor_id else None,
+                target_type=target_type,
+                target_id=str(target_id) if target_id else None,
+                error=str(exc),
+            )
+            return event
 
         logger.info(
             "audit_event_recorded",

@@ -1,7 +1,7 @@
 """Unit tests for AuthorizationService (policy evaluation engine)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -173,9 +173,11 @@ class TestDenyOverrides:
         )
 
         mock_session = AsyncMock()
+        mock_ancestor_result = MagicMock()
+        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [deny_policy, allow_policy]
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
 
         with (
             patch(
@@ -207,12 +209,14 @@ class TestDefaultDeny:
     @pytest.mark.asyncio
     async def test_default_deny_when_no_policies(self) -> None:
         """No policies → default deny."""
+        agent_id = uuid4()
+
         mock_session = AsyncMock()
+        mock_ancestor_result = MagicMock()
+        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        agent_id = uuid4()
+        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
         with (
             patch(
                 "agentauth.services.authorization.AuthorizationService._get_cached_decision",
@@ -251,12 +255,14 @@ class TestDefaultDeny:
             priority=10,
             enabled=True,
         )
+        agent_id = uuid4()  # Different from policy's agent_ids
+
         mock_session = AsyncMock()
+        mock_ancestor_result = MagicMock()
+        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [policy]
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        agent_id = uuid4()  # Different from policy's agent_ids
+        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
         with (
             patch(
                 "agentauth.services.authorization.AuthorizationService._get_cached_decision",
@@ -300,9 +306,11 @@ class TestAllowWhenMatch:
             enabled=True,
         )
         mock_session = AsyncMock()
+        mock_ancestor_result = MagicMock()
+        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [policy]
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
 
         with (
             patch(
@@ -326,6 +334,434 @@ class TestAllowWhenMatch:
         assert result.effect == "allow"
         assert result.matching_policy_id == policy.id
         assert "allow-read" in result.reason
+
+
+class TestPolicyScoping:
+    """Tests that _load_policies only returns policies from the agent's trust chain."""
+
+    @pytest.mark.asyncio
+    async def test_policies_scoped_to_ancestor_chain(self) -> None:
+        """Only policies created by agents in the ancestor chain are loaded."""
+        agent_id = uuid4()
+        ancestor_id = uuid4()
+        unrelated_id = uuid4()
+
+        # Policy created by an ancestor — should be visible
+        ancestor_policy = Policy(
+            id=uuid4(),
+            created_by_agent_id=ancestor_id,
+            name="ancestor-allow",
+            effect=PolicyEffect.ALLOW,
+            subjects={"wildcard": True},
+            resources={"wildcard": True},
+            actions=["read"],
+            conditions={},
+            priority=10,
+            enabled=True,
+        )
+        # Policy from an unrelated tree — must NOT be visible
+        unrelated_policy = Policy(
+            id=uuid4(),
+            created_by_agent_id=unrelated_id,
+            name="unrelated-deny",
+            effect=PolicyEffect.DENY,
+            subjects={"wildcard": True},
+            resources={"wildcard": True},
+            actions=["*"],
+            conditions={},
+            priority=100,
+            enabled=True,
+        )
+
+        mock_session = AsyncMock()
+
+        # First execute call → recursive CTE returning [agent_id, ancestor_id]
+        ancestor_rows = MagicMock()
+        ancestor_rows.fetchall.return_value = [(str(agent_id),), (str(ancestor_id),)]
+
+        # Second execute call → policies query returning only ancestor_policy
+        policy_result = MagicMock()
+        policy_result.scalars.return_value.all.return_value = [ancestor_policy]
+
+        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+
+        with (
+            patch(
+                "agentauth.services.authorization.AuthorizationService._get_cached_decision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "agentauth.services.authorization.AuthorizationService._cache_decision",
+                new_callable=AsyncMock,
+            ),
+        ):
+            service = AuthorizationService(mock_session)
+            result = await service.evaluate(
+                agent_id=agent_id,
+                action="read",
+                resource="/api/v1/agents",
+            )
+
+        # Should allow because ancestor_policy matches and unrelated_deny is excluded
+        assert result.allowed is True
+        assert result.matching_policy_id == ancestor_policy.id
+
+    @pytest.mark.asyncio
+    async def test_no_ancestor_ids_returns_default_deny(self) -> None:
+        """When the CTE returns no rows (e.g. unknown agent), default deny applies."""
+        agent_id = uuid4()
+
+        mock_session = AsyncMock()
+
+        # CTE returns empty — agent not found
+        empty_ancestor_rows = MagicMock()
+        empty_ancestor_rows.fetchall.return_value = []
+
+        mock_session.execute = AsyncMock(return_value=empty_ancestor_rows)
+
+        with (
+            patch(
+                "agentauth.services.authorization.AuthorizationService._get_cached_decision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "agentauth.services.authorization.AuthorizationService._cache_decision",
+                new_callable=AsyncMock,
+            ),
+        ):
+            service = AuthorizationService(mock_session)
+            result = await service.evaluate(
+                agent_id=agent_id,
+                action="read",
+                resource="/api/v1/agents",
+            )
+
+        assert result.allowed is False
+        assert "default deny" in result.reason.lower()
+
+
+class TestPolicyScopingViolations:
+    """Tests that policies from sibling/unrelated trees cannot affect other agents."""
+
+    @pytest.mark.asyncio
+    async def test_sibling_tree_deny_does_not_apply(self) -> None:
+        """
+        A DENY policy created by a sibling-tree agent must not affect the requesting agent.
+
+        Tree layout:
+          root_a → agent_a   (requesting agent)
+          root_b → agent_b   (unrelated sibling tree)
+
+        A DENY policy created by root_b/agent_b must be invisible to agent_a.
+        """
+        agent_a = uuid4()
+        root_a = uuid4()
+        agent_b = uuid4()
+
+        # The sibling DENY policy explicitly names agent_a in subjects — it still
+        # must be excluded because root_b is not in agent_a's ancestor chain.
+        sibling_deny = Policy(
+            id=uuid4(),
+            created_by_agent_id=agent_b,  # Different tree
+            name="sibling-deny",
+            effect=PolicyEffect.DENY,
+            subjects={"agent_ids": [str(agent_a)]},  # Explicitly targets agent_a
+            resources={"wildcard": True},
+            actions=["*"],
+            conditions={},
+            priority=999,
+            enabled=True,
+        )
+        ancestor_allow = Policy(
+            id=uuid4(),
+            created_by_agent_id=root_a,
+            name="ancestor-allow",
+            effect=PolicyEffect.ALLOW,
+            subjects={"wildcard": True},
+            resources={"wildcard": True},
+            actions=["read"],
+            conditions={},
+            priority=10,
+            enabled=True,
+        )
+
+        mock_session = AsyncMock()
+
+        # CTE returns only agent_a and root_a (agent_b is not an ancestor)
+        ancestor_rows = MagicMock()
+        ancestor_rows.fetchall.return_value = [(str(agent_a),), (str(root_a),)]
+
+        # DB returns only ancestor_allow (sibling_deny excluded by the query's WHERE clause)
+        policy_result = MagicMock()
+        policy_result.scalars.return_value.all.return_value = [ancestor_allow]
+
+        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+
+        with (
+            patch(
+                "agentauth.services.authorization.AuthorizationService._get_cached_decision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "agentauth.services.authorization.AuthorizationService._cache_decision",
+                new_callable=AsyncMock,
+            ),
+        ):
+            service = AuthorizationService(mock_session)
+            result = await service.evaluate(
+                agent_id=agent_a,
+                action="read",
+                resource="/api/v1/agents",
+            )
+
+        # Sibling DENY is excluded → ancestor ALLOW wins
+        assert result.allowed is True
+        assert result.matching_policy_id == ancestor_allow.id
+
+    @pytest.mark.asyncio
+    async def test_only_self_in_ancestor_chain(self) -> None:
+        """
+        A root agent (no parent) only sees policies it created itself.
+        """
+        root_agent = uuid4()
+        other_root = uuid4()
+
+        own_allow = Policy(
+            id=uuid4(),
+            created_by_agent_id=root_agent,
+            name="own-allow",
+            effect=PolicyEffect.ALLOW,
+            subjects={"wildcard": True},
+            resources={"wildcard": True},
+            actions=["read"],
+            conditions={},
+            priority=10,
+            enabled=True,
+        )
+
+        mock_session = AsyncMock()
+
+        # CTE returns only the root agent itself
+        ancestor_rows = MagicMock()
+        ancestor_rows.fetchall.return_value = [(str(root_agent),)]
+
+        # DB returns own_allow only (other_root's policies excluded)
+        policy_result = MagicMock()
+        policy_result.scalars.return_value.all.return_value = [own_allow]
+
+        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+
+        with (
+            patch(
+                "agentauth.services.authorization.AuthorizationService._get_cached_decision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "agentauth.services.authorization.AuthorizationService._cache_decision",
+                new_callable=AsyncMock,
+            ),
+        ):
+            service = AuthorizationService(mock_session)
+            result = await service.evaluate(
+                agent_id=root_agent,
+                action="read",
+                resource="/api/v1/agents",
+            )
+
+        assert result.allowed is True
+        assert result.matching_policy_id == own_allow.id
+
+    @pytest.mark.asyncio
+    async def test_disabled_policy_in_ancestor_chain_excluded(self) -> None:
+        """
+        A disabled policy (enabled=False) from the agent's own ancestor chain
+        must NOT affect the decision — only enabled policies are loaded.
+        """
+        agent_id = uuid4()
+        ancestor_id = uuid4()
+
+        # Disabled ALLOW from own ancestor — must be excluded
+        disabled_allow = Policy(
+            id=uuid4(),
+            created_by_agent_id=ancestor_id,
+            name="disabled-allow",
+            effect=PolicyEffect.ALLOW,
+            subjects={"wildcard": True},
+            resources={"wildcard": True},
+            actions=["read"],
+            conditions={},
+            priority=10,
+            enabled=False,  # disabled
+        )
+
+        mock_session = AsyncMock()
+
+        ancestor_rows = MagicMock()
+        ancestor_rows.fetchall.return_value = [(str(agent_id),), (str(ancestor_id),)]
+
+        # DB excludes disabled policies (WHERE enabled IS TRUE) → empty result
+        policy_result = MagicMock()
+        policy_result.scalars.return_value.all.return_value = []
+
+        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+
+        with (
+            patch(
+                "agentauth.services.authorization.AuthorizationService._get_cached_decision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "agentauth.services.authorization.AuthorizationService._cache_decision",
+                new_callable=AsyncMock,
+            ),
+        ):
+            service = AuthorizationService(mock_session)
+            result = await service.evaluate(
+                agent_id=agent_id,
+                action="read",
+                resource="/api/v1/agents",
+            )
+
+        # No enabled policies → default deny
+        assert result.allowed is False
+        assert result.matching_policy_id is None
+        assert "default deny" in result.reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_deeply_nested_agent_scoped_to_full_ancestor_chain(self) -> None:
+        """
+        An agent three levels deep sees policies from all three ancestors.
+        Sibling chains at the same depth are excluded.
+        """
+        root = uuid4()
+        parent = uuid4()
+        agent = uuid4()
+        sibling_root = uuid4()
+
+        ancestor_allow = Policy(
+            id=uuid4(),
+            created_by_agent_id=root,
+            name="root-allow",
+            effect=PolicyEffect.ALLOW,
+            subjects={"wildcard": True},
+            resources={"wildcard": True},
+            actions=["read"],
+            conditions={},
+            priority=5,
+            enabled=True,
+        )
+        parent_restrict = Policy(
+            id=uuid4(),
+            created_by_agent_id=parent,
+            name="parent-restrict",
+            effect=PolicyEffect.DENY,
+            subjects={"wildcard": True},
+            resources={"paths": ["/api/v1/admin/*"]},
+            actions=["*"],
+            conditions={},
+            priority=50,
+            enabled=True,
+        )
+
+        mock_session = AsyncMock()
+
+        # Full ancestor chain: agent → parent → root
+        ancestor_rows = MagicMock()
+        ancestor_rows.fetchall.return_value = [
+            (str(agent),),
+            (str(parent),),
+            (str(root),),
+        ]
+
+        # Both own-tree policies returned (sibling_root's excluded by DB query)
+        policy_result = MagicMock()
+        # parent_restrict has higher priority — evaluated first
+        policy_result.scalars.return_value.all.return_value = [parent_restrict, ancestor_allow]
+
+        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+
+        with (
+            patch(
+                "agentauth.services.authorization.AuthorizationService._get_cached_decision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "agentauth.services.authorization.AuthorizationService._cache_decision",
+                new_callable=AsyncMock,
+            ),
+        ):
+            service = AuthorizationService(mock_session)
+            # Accessing admin resource — hits parent_restrict DENY
+            result = await service.evaluate(
+                agent_id=agent,
+                action="delete",
+                resource="/api/v1/admin/users",
+            )
+
+        assert result.allowed is False
+        assert result.matching_policy_id == parent_restrict.id
+
+    @pytest.mark.asyncio
+    async def test_unrelated_allow_does_not_grant_access(self) -> None:
+        """
+        An ALLOW policy from an unrelated tree must not grant access even when it
+        would otherwise match action/resource/subjects.
+        """
+        agent_id = uuid4()
+        unrelated_creator = uuid4()
+
+        # This policy matches the agent by ID but comes from unrelated tree
+        unrelated_allow = Policy(
+            id=uuid4(),
+            created_by_agent_id=unrelated_creator,
+            name="unrelated-allow",
+            effect=PolicyEffect.ALLOW,
+            subjects={"agent_ids": [str(agent_id)]},
+            resources={"wildcard": True},
+            actions=["read"],
+            conditions={},
+            priority=100,
+            enabled=True,
+        )
+
+        mock_session = AsyncMock()
+
+        # Ancestor CTE: only agent_id (no ancestors, no parent)
+        ancestor_rows = MagicMock()
+        ancestor_rows.fetchall.return_value = [(str(agent_id),)]
+
+        # DB excludes unrelated_allow → empty
+        policy_result = MagicMock()
+        policy_result.scalars.return_value.all.return_value = []
+
+        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+
+        with (
+            patch(
+                "agentauth.services.authorization.AuthorizationService._get_cached_decision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "agentauth.services.authorization.AuthorizationService._cache_decision",
+                new_callable=AsyncMock,
+            ),
+        ):
+            service = AuthorizationService(mock_session)
+            result = await service.evaluate(
+                agent_id=agent_id,
+                action="read",
+                resource="/api/v1/agents",
+            )
+
+        assert result.allowed is False
+        assert "default deny" in result.reason.lower()
 
 
 class TestCaching:

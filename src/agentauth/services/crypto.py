@@ -57,8 +57,11 @@ class CryptoService:
             encryption_algorithm=serialization.NoEncryption(),
         ).decode("utf-8")
 
-        # Encrypt private key before storage
-        encrypted_private_pem = encrypt_secret(private_pem, settings.secret_key)
+        # Encrypt private key before storage using the dedicated signing key
+        # encryption key (falls back to secret_key in development).
+        encrypted_private_pem = encrypt_secret(
+            private_pem, settings.effective_signing_key_encryption_key
+        )
 
         # Extract public key
         public_key = private_key.public_key()
@@ -125,8 +128,11 @@ class CryptoService:
             encryption_algorithm=serialization.NoEncryption(),
         ).decode("utf-8")
 
-        # Encrypt private key before storage
-        encrypted_private_pem = encrypt_secret(private_pem, settings.secret_key)
+        # Encrypt private key before storage using the dedicated signing key
+        # encryption key (falls back to secret_key in development).
+        encrypted_private_pem = encrypt_secret(
+            private_pem, settings.effective_signing_key_encryption_key
+        )
 
         # Extract public key
         public_key = private_key.public_key()

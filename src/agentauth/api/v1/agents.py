@@ -235,10 +235,21 @@ async def list_agents(
     try:
         # Determine subtree restriction based on the authenticated agent's position.
         # Root agents (trust_level=ROOT) see the entire agent tree.
-        # Non-root agents are restricted to their own descendants.
+        # Non-root agents are restricted to their own subtree (inclusive).
+        # If no authenticated agent is present (should not happen on a protected
+        # route), return an empty set as a safe default.
         caller = getattr(request.state, "agent", None)
+        if caller is None:
+            # This should never happen on a protected route — AuthenticationMiddleware
+            # always rejects unauthenticated requests before reaching here.
+            # If it does, signal a 401 rather than silently returning an empty list,
+            # so the misconfiguration is immediately visible.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
         subtree_ids: list[UUID] | None = None
-        if caller is not None and not caller.is_root():
+        if not caller.is_root():
             subtree_ids = await identity_service.get_subtree_agent_ids(caller.id)
 
         agents = await identity_service.list_agents(

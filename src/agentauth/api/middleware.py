@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from agentauth.core.database import get_session_maker
 from agentauth.core.exceptions import AuthenticationError
-from agentauth.models.agent import Agent, AgentStatus, TrustLevel
+from agentauth.models.agent import Agent, AgentStatus
 from agentauth.services.credential import CredentialService
 
 # Mapping of HTTP methods to authorization actions
@@ -136,7 +136,18 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
         # Root agents are trust anchors — they bypass policy enforcement.
         # IMPORTANT: Policy deny rules cannot override root agent access.
-        if agent.trust_level == TrustLevel.ROOT:
+        #
+        # is_root() requires BOTH parent_agent_id is None AND trust_level == ROOT,
+        # providing defense-in-depth: an agent whose trust_level was somehow set
+        # to ROOT without being a true root (no parent) still goes through normal
+        # policy evaluation.
+        if agent.is_root():
+            logger.info(
+                "root_agent_policy_bypass",
+                agent_id=str(agent.id),
+                action=_METHOD_TO_ACTION.get(request.method.upper(), "write"),
+                resource=request.url.path,
+            )
             response = await call_next(request)
             response.headers["X-Authorization-Decision"] = "allow"
             return response

@@ -65,3 +65,11 @@ addopts = "-v --cov=src/agentauth --cov-report=term-missing"
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
 ]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+]
