@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import UUID as SAUUID, ForeignKey, Integer, String
+from sqlalchemy import UUID as SAUUID, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -56,9 +56,11 @@ class Delegation(BaseModel):
         comment="Maximum allowed re-delegation depth from this delegation",
     )
     expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
     revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
 

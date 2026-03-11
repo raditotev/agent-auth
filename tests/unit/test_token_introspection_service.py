@@ -268,6 +268,7 @@ async def test_revoke_token(
         mock_client = AsyncMock()
         mock_client.set.return_value = True
         mock_client.delete.return_value = True
+        mock_client.get = AsyncMock(return_value=None)  # No paired token in Redis
         mock_redis.return_value = mock_client
 
         # Revoke the token

@@ -1,15 +1,34 @@
 """End-to-end tests for complete authentication flows."""
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from agentauth.main import create_app
 
 
-@pytest.fixture
-def app():
-    """Create the full application for e2e testing."""
-    return create_app()
+@pytest_asyncio.fixture
+async def app(db_engine):
+    """Create the full application for e2e testing using test DB."""
+    import agentauth.core.database as db_module
+    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+
+    from agentauth.services.crypto import CryptoService
+
+    test_session_maker = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    original_session_maker = db_module.async_session_maker
+    db_module.async_session_maker = test_session_maker
+
+    # Seed signing keys so the token minting endpoints work without a running lifespan
+    async with test_session_maker() as session:
+        await CryptoService(session).rotate_keys()
+        await session.commit()
+
+    yield create_app()
+
+    db_module.async_session_maker = original_session_maker
 
 
 @pytest.mark.asyncio
@@ -109,7 +128,7 @@ class TestFullAuthFlow:
 
             # Step 2: Create credential via service (we have db_session from fixture)
             identity_service = IdentityService(db_session)
-            agent = await identity_service.get_agent(agent_id)
+            agent = await identity_service.get_agent_by_id(agent_id)
             assert agent is not None
 
             credential_service = CredentialService(db_session)

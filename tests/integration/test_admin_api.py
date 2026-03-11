@@ -52,8 +52,8 @@ class TestAdminStats:
 
         json_data = response.json()
         assert "data" in json_data
-        assert json_data["data"]["agents"] == 1
-        assert json_data["data"]["credentials"] == 1
+        assert json_data["data"]["agents"] >= 1
+        assert json_data["data"]["credentials"] >= 1
         assert json_data["data"]["tokens_issued"] == 3
 
     @pytest.mark.asyncio

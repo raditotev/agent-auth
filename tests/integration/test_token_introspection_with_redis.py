@@ -1,5 +1,6 @@
 """Integration tests for token introspection with real Redis."""
 
+import hashlib
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,7 +54,7 @@ async def test_introspection_caching_with_real_redis(
         assert data1["active"] is True
 
         # Verify cache was written
-        cache_key = f"introspection:{access_token[-32:]}"
+        cache_key = f"introspection:{hashlib.sha256(access_token.encode()).hexdigest()[:16]}"
         cached_data = await redis_client.get_json(cache_key)
         assert cached_data is not None
         assert cached_data["active"] is True
@@ -173,7 +174,7 @@ async def test_cache_ttl_matches_token_lifetime(
         assert response.status_code == 200
 
         # Check TTL in Redis (using low-level client)
-        cache_key = f"introspection:{access_token[-32:]}"
+        cache_key = f"introspection:{hashlib.sha256(access_token.encode()).hexdigest()[:16]}"
         if redis_client._client:
             ttl = await redis_client._client.ttl(cache_key)  # type: ignore
 

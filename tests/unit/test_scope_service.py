@@ -1,5 +1,7 @@
 """Unit tests for ScopeService resolution logic (Task 3.1)."""
 
+import types
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -34,14 +36,8 @@ class TestScopeResolution:
         mock_session = MagicMock()
 
         # Mock get_all_scopes to return a fixed set
-        from agentauth.models.scope import Scope
-        from uuid import uuid4
-        from datetime import datetime, UTC
-
-        def make_scope(name: str) -> Scope:
-            s = Scope.__new__(Scope)
-            s.name = name
-            return s
+        def make_scope(name: str) -> types.SimpleNamespace:
+            return types.SimpleNamespace(name=name)
 
         scopes_in_db = [
             make_scope(n) for n in ["files.read", "files.write", "files.delete", "email.send"]
@@ -69,12 +65,8 @@ class TestScopeResolution:
     @pytest.mark.asyncio
     async def test_resolve_mixed_wildcard_and_explicit(self) -> None:
         """Mix of wildcards and explicit scopes resolved correctly."""
-        from agentauth.models.scope import Scope
-
-        def make_scope(name: str) -> Scope:
-            s = Scope.__new__(Scope)
-            s.name = name
-            return s
+        def make_scope(name: str) -> types.SimpleNamespace:
+            return types.SimpleNamespace(name=name)
 
         scopes_in_db = [
             make_scope(n) for n in ["files.read", "files.write", "email.send", "api.read"]

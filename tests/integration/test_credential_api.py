@@ -114,7 +114,7 @@ class TestCredentialAPI:
         cred1, _ = await service.create_credential(agent_id=root_agent.id)
         cred2, _ = await service.create_credential(agent_id=root_agent.id)
 
-        response = await client.get("/api/v1/credentials")
+        response = await client.get(f"/api/v1/credentials?agent_id={str(root_agent.id)}")
 
         assert response.status_code == 200
         data = response.json()
@@ -160,13 +160,13 @@ class TestCredentialAPI:
         await service.revoke_credential(cred1.id)
 
         # List without revoked
-        response = await client.get("/api/v1/credentials")
+        response = await client.get(f"/api/v1/credentials?agent_id={str(root_agent.id)}")
         assert response.status_code == 200
         data = response.json()
         assert len(data["data"]) == 1
 
         # List with revoked
-        response = await client.get("/api/v1/credentials?include_revoked=true")
+        response = await client.get(f"/api/v1/credentials?agent_id={str(root_agent.id)}&include_revoked=true")
         assert response.status_code == 200
         data = response.json()
         assert len(data["data"]) == 2

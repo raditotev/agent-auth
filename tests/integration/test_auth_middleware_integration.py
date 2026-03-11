@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +14,21 @@ from agentauth.services.credential import CredentialService
 from agentauth.services.identity import IdentityService
 
 
-@pytest.fixture
-def app():
-    """Create the full application for integration testing."""
-    return create_app()
+@pytest_asyncio.fixture
+async def app(db_engine):
+    """Create the full application for integration testing using test DB."""
+    import agentauth.core.database as db_module
+    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+
+    test_session_maker = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    original_session_maker = db_module.async_session_maker
+    db_module.async_session_maker = test_session_maker
+
+    yield create_app()
+
+    db_module.async_session_maker = original_session_maker
 
 
 @pytest.mark.asyncio
@@ -46,7 +58,7 @@ class TestAuthenticationIntegration:
             # (In real scenario, bootstrap might return initial credential)
             # For now, we'll create it directly via service
             identity_service = IdentityService(db_session)
-            agent = await identity_service.get_agent(agent_id)
+            agent = await identity_service.get_agent_by_id(agent_id)
 
             credential_service = CredentialService(db_session)
             credential, raw_key = await credential_service.create_credential(

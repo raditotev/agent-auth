@@ -373,9 +373,15 @@ class TestTokenValidation:
         # Decode and re-encode with different kid
         decoded = jwt.decode(token, options={"verify_signature": False})
 
-        # Load the key to re-sign
+        # Load the key to re-sign (private_key_pem is stored encrypted)
+        from agentauth.core.security import decrypt_secret
+        from agentauth.config import settings
+        decrypted_pem = decrypt_secret(
+            active_rsa_key.private_key_pem,
+            settings.effective_signing_key_encryption_key,
+        )
         private_key = serialization.load_pem_private_key(
-            active_rsa_key.private_key_pem.encode("utf-8"),
+            decrypted_pem.encode("utf-8"),
             password=None,
         )
 
