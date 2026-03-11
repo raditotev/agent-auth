@@ -16,7 +16,7 @@
 # REQUIREMENTS:
 #   - Docker + Docker Compose v2 installed
 #   - Nginx installed and managing /etc/nginx/conf.d/
-#   - Run from the repo root on the VPS (default: /opt/agentauth)
+#   - Run from the repo root on the VPS (default: /home/admin/agentauth)
 #   - Nginx config files for each slot already present:
 #       /etc/nginx/conf.d/agentauth-blue.conf   (upstream 127.0.0.1:8001)
 #       /etc/nginx/conf.d/agentauth-green.conf  (upstream 127.0.0.1:8002)
@@ -27,7 +27,7 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
-DEPLOY_PATH="${DEPLOY_PATH:-/opt/agentauth}"
+DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/agentauth}"
 STATE_FILE="${DEPLOY_PATH}/.active-slot"
 NGINX_CONF_DIR="/etc/nginx/conf.d"
 ACTIVE_SYMLINK="${NGINX_CONF_DIR}/agentauth-active.conf"

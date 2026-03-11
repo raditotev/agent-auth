@@ -32,16 +32,16 @@ git --version
 **Create deploy user:**
 
 ```bash
-sudo adduser deploy
-sudo usermod -aG sudo deploy
-sudo usermod -aG docker deploy
+sudo adduser admin
+sudo usermod -aG sudo admin
+sudo usermod -aG docker admin
 ```
 
 **Configure SSH key-based auth:**
 
 ```bash
 # On your local machine — copy your public key
-ssh-copy-id deploy@<your-server-ip>
+ssh-copy-id admin@<your-server-ip>
 ```
 
 **Disable password authentication** — edit `/etc/ssh/sshd_config`:
@@ -68,8 +68,8 @@ sudo ufw enable
 **Create project directory:**
 
 ```bash
-sudo mkdir -p /opt/agentauth
-sudo chown deploy:deploy /opt/agentauth
+sudo mkdir -p /home/admin/agentauth
+sudo chown admin:admin /home/admin/agentauth
 ```
 
 ---
@@ -95,7 +95,7 @@ cloudflared tunnel create agentauth
 
 ```yaml
 tunnel: agentauth
-credentials-file: /home/deploy/.cloudflared/<tunnel-id>.json
+credentials-file: /home/admin/.cloudflared/<tunnel-id>.json
 
 ingress:
   - hostname: yourdomain.com
@@ -117,9 +117,9 @@ sudo systemctl enable --now cloudflared
 **Copy configuration files:**
 
 ```bash
-sudo cp /opt/agentauth/nginx/agentauth.conf /etc/nginx/sites-available/agentauth
-sudo cp /opt/agentauth/nginx/blue.conf /etc/nginx/conf.d/agentauth-blue.conf
-sudo cp /opt/agentauth/nginx/green.conf /etc/nginx/conf.d/agentauth-green.conf
+sudo cp /home/admin/agentauth/nginx/agentauth.conf /etc/nginx/sites-available/agentauth
+sudo cp /home/admin/agentauth/nginx/blue.conf /etc/nginx/conf.d/agentauth-blue.conf
+sudo cp /home/admin/agentauth/nginx/green.conf /etc/nginx/conf.d/agentauth-green.conf
 ```
 
 **Enable the site:**
@@ -149,8 +149,8 @@ sudo systemctl reload nginx
 **Clone the repository:**
 
 ```bash
-git clone https://github.com/<your-org>/agent-auth.git /opt/agentauth
-cd /opt/agentauth
+git clone https://github.com/<your-org>/agent-auth.git /home/admin/agentauth
+cd /home/admin/agentauth
 ```
 
 **Create the `.env` file:**
@@ -187,7 +187,7 @@ POSTGRES_PASSWORD=YOUR_DB_PASSWORD       # must match DATABASE_URL
 **Create the initial slot state file:**
 
 ```bash
-echo "blue" > /opt/agentauth/.active-slot
+echo "blue" > /home/admin/agentauth/.active-slot
 ```
 
 ---
@@ -197,7 +197,7 @@ echo "blue" > /opt/agentauth/.active-slot
 **Start infrastructure services only:**
 
 ```bash
-cd /opt/agentauth
+cd /home/admin/agentauth
 docker compose -f docker-compose.prod.yml up -d postgres redis
 ```
 
@@ -242,9 +242,7 @@ The CI pipeline (`.github/workflows/ci.yml`) runs **lint-and-typecheck → test 
 | Secret | Description |
 |---|---|
 | `DEPLOY_HOST` | IP address or hostname of the VPS |
-| `DEPLOY_USER` | SSH username (e.g. `deploy`) |
 | `DEPLOY_SSH_KEY` | Private SSH key (PEM format) |
-| `DEPLOY_PATH` | Absolute project path on the VPS (e.g. `/opt/agentauth`) |
 
 **Generate a dedicated SSH key pair for GitHub Actions:**
 
@@ -294,7 +292,7 @@ bash scripts/deploy.sh rollback
 
 ```bash
 # Which slot is active?
-cat /opt/agentauth/.active-slot
+cat /home/admin/agentauth/.active-slot
 
 # Confirm the Nginx symlink target
 ls -la /etc/nginx/conf.d/agentauth-active.conf
@@ -306,7 +304,7 @@ ls -la /etc/nginx/conf.d/agentauth-active.conf
 # Switch to green manually
 sudo ln -sf /etc/nginx/conf.d/agentauth-green.conf /etc/nginx/conf.d/agentauth-active.conf
 sudo systemctl reload nginx
-echo "green" > /opt/agentauth/.active-slot
+echo "green" > /home/admin/agentauth/.active-slot
 ```
 
 ---
@@ -373,7 +371,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ### Accessing Grafana
 
-- **URL:** `http://localhost:3000` (access remotely via SSH tunnel: `ssh -L 3000:localhost:3000 deploy@<your-server-ip>`)
+- **URL:** `http://localhost:3000` (access remotely via SSH tunnel: `ssh -L 3000:localhost:3000 admin@<your-server-ip>`)
 - **Login:** `admin` / `$GRAFANA_PASSWORD` (defaults to `admin` if `GRAFANA_PASSWORD` is not set in `.env`)
 
 Set a strong password in `.env`:
@@ -455,16 +453,16 @@ Add to the host's `/etc/cron.d/agentauth-backup`:
 
 ```cron
 # Run backup daily at 02:00 UTC
-0 2 * * *  root  /opt/agentauth/scripts/backup.sh >> /var/log/agentauth-backup.log 2>&1
+0 2 * * *  root  /home/admin/agentauth/scripts/backup.sh >> /var/log/agentauth-backup.log 2>&1
 ```
 
 ### Environment variables
 
-Set in `/opt/agentauth/.env` (or shell environment):
+Set in `/home/admin/agentauth/.env` (or shell environment):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BACKUP_DIR` | `/opt/agentauth/backups` | Local directory for backup files |
+| `BACKUP_DIR` | `/home/admin/agentauth/backups` | Local directory for backup files |
 | `BACKUP_REMOTE` | *(empty)* | rclone remote path for offsite sync (e.g. `r2:agentauth-backups`) |
 | `POSTGRES_CONTAINER` | auto-detect | Docker container name for Postgres |
 | `REDIS_CONTAINER` | auto-detect | Docker container name for Redis |
@@ -491,12 +489,12 @@ make backup-list
 Output example:
 ```
 PostgreSQL backups:
-  2026-03-11   1840 KB  /opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
-  2026-03-10   1838 KB  /opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-10_daily.dump
+  2026-03-11   1840 KB  /home/admin/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
+  2026-03-10   1838 KB  /home/admin/agentauth/backups/postgres/daily/agentauth_pg_2026-03-10_daily.dump
   ...
 
 Redis backups:
-  2026-03-11     92 KB  /opt/agentauth/backups/redis/daily/agentauth_redis_2026-03-11_daily.rdb
+  2026-03-11     92 KB  /home/admin/agentauth/backups/redis/daily/agentauth_redis_2026-03-11_daily.rdb
   ...
 ```
 
@@ -516,10 +514,10 @@ docker exec agentauth-postgres-1 \
 
 ```bash
 # Interactive (prompts for confirmation)
-make backup-restore FILE=/opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
+make backup-restore FILE=/home/admin/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
 
 # Or call directly
-./scripts/restore.sh /opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
+./scripts/restore.sh /home/admin/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
 ```
 
 After restore:
@@ -564,7 +562,7 @@ docker compose -f docker-compose.prod.yml logs app-green
 Confirm which slot is supposed to be active and that its container is running:
 
 ```bash
-cat /opt/agentauth/.active-slot
+cat /home/admin/agentauth/.active-slot
 make prod-ps
 ```
 
@@ -586,7 +584,7 @@ docker compose -f docker-compose.prod.yml ps redis
 
 **CI deploy job fails**
 
-Ensure all four GitHub Secrets are configured in *Settings > Secrets and variables > Actions*: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`.
+Ensure both GitHub Secrets are configured in *Settings > Secrets and variables > Actions*: `DEPLOY_HOST`, `DEPLOY_SSH_KEY`.
 
 **Migrations fail during deploy**
 
