@@ -432,7 +432,122 @@ The **AgentAuth Operations** dashboard is auto-provisioned on Grafana startup an
 
 ---
 
-## 11. Troubleshooting
+## 11. Backups
+
+AgentAuth backs up **PostgreSQL** (full logical dump) and **Redis** (RDB snapshot) using a
+**GFS (Grandfather-Father-Son) rotation** scheme.
+
+### Retention policy
+
+| Tier | Frequency | Retention | Files kept |
+|------|-----------|-----------|-----------|
+| Daily | Every day at 02:00 UTC | 7 days | 7 |
+| Weekly | Every Sunday | 4 weeks | 4 |
+| Monthly | 1st of month | 3 months | 3 |
+| **Total on disk** | | | **≤ 14 PG + 7 Redis** |
+
+Redis holds ephemeral data (rate-limit windows, token caches). AOF provides crash recovery;
+the daily RDB snapshot is an additional safety net. Only daily rotation is applied to Redis.
+
+### Scheduled backup (cron)
+
+Add to the host's `/etc/cron.d/agentauth-backup`:
+
+```cron
+# Run backup daily at 02:00 UTC
+0 2 * * *  root  /opt/agentauth/scripts/backup.sh >> /var/log/agentauth-backup.log 2>&1
+```
+
+### Environment variables
+
+Set in `/opt/agentauth/.env` (or shell environment):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKUP_DIR` | `/opt/agentauth/backups` | Local directory for backup files |
+| `BACKUP_REMOTE` | *(empty)* | rclone remote path for offsite sync (e.g. `r2:agentauth-backups`) |
+| `POSTGRES_CONTAINER` | auto-detect | Docker container name for Postgres |
+| `REDIS_CONTAINER` | auto-detect | Docker container name for Redis |
+
+### Running a backup manually
+
+```bash
+# Via Makefile
+make backup
+
+# Directly
+./scripts/backup.sh
+
+# Dry run — see what would happen without making changes
+./scripts/backup.sh --dry-run
+```
+
+### Listing available backups
+
+```bash
+make backup-list
+```
+
+Output example:
+```
+PostgreSQL backups:
+  2026-03-11   1840 KB  /opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
+  2026-03-10   1838 KB  /opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-10_daily.dump
+  ...
+
+Redis backups:
+  2026-03-11     92 KB  /opt/agentauth/backups/redis/daily/agentauth_redis_2026-03-11_daily.rdb
+  ...
+```
+
+### Verifying a backup
+
+Before relying on a backup for restore, verify its contents:
+
+```bash
+# List tables and row counts in a pg_dump archive
+docker exec agentauth-postgres-1 \
+  pg_restore --list /tmp/agentauth_pg_2026-03-11_daily.dump 2>/dev/null | head -30
+```
+
+### Restoring from a backup
+
+> ⚠ **Restore drops and recreates all database objects.** App slots are stopped automatically.
+
+```bash
+# Interactive (prompts for confirmation)
+make backup-restore FILE=/opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
+
+# Or call directly
+./scripts/restore.sh /opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
+```
+
+After restore:
+1. Verify the app is healthy: `make prod-ps`
+2. Check for migration drift: `uv run alembic current`
+3. Smoke-test the `/health` endpoint
+
+### Offsite backup with rclone
+
+Install [rclone](https://rclone.org) and configure a remote (e.g. Cloudflare R2, Backblaze B2, or S3):
+
+```bash
+rclone config   # follow prompts to add a remote named "r2"
+```
+
+Then set `BACKUP_REMOTE` in `.env`:
+
+```env
+BACKUP_REMOTE=r2:agentauth-backups
+```
+
+The backup script will call `rclone sync` after each run, mirroring the local `BACKUP_DIR`
+to the remote. The same retention policy applies — old files are pruned locally before sync,
+so the remote mirrors the local state.
+
+---
+
+## 12. Troubleshooting
 
 **Deploy fails health check**
 

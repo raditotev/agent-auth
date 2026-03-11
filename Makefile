@@ -1,4 +1,4 @@
-.PHONY: help install dev up down clean test lint format typecheck migrate migrate-create run prod-up-blue prod-up-green prod-down prod-logs prod-ps
+.PHONY: help install dev up down clean test lint format typecheck migrate migrate-create run prod-up-blue prod-up-green prod-down prod-logs prod-ps backup backup-list backup-restore
 
 help:
 	@echo "AgentAuth - Available commands:"
@@ -19,6 +19,9 @@ help:
 	@echo "  prod-down      - Stop all production services"
 	@echo "  prod-logs      - Tail logs from all production services"
 	@echo "  prod-ps        - Show status of production services"
+	@echo "  backup         - Run a database backup (PostgreSQL + Redis)"
+	@echo "  backup-list    - List available backup files with sizes and dates"
+	@echo "  backup-restore - Restore PostgreSQL from a backup file (interactive)"
 
 install:
 	uv sync
@@ -82,3 +85,17 @@ prod-logs:
 
 prod-ps:
 	docker compose -f docker-compose.prod.yml --profile blue --profile green ps
+
+backup:
+	@bash scripts/backup.sh
+
+backup-list:
+	@BACKUP_DIR=$${BACKUP_DIR:-/opt/agentauth/backups}; \
+	echo "PostgreSQL backups:"; \
+	find "$$BACKUP_DIR/postgres" -name "*.dump" -type f -printf "  %TY-%Tm-%Td  %6k KB  %p\n" 2>/dev/null | sort || echo "  (none found)"; \
+	echo ""; \
+	echo "Redis backups:"; \
+	find "$$BACKUP_DIR/redis" -name "*.rdb" -type f -printf "  %TY-%Tm-%Td  %6k KB  %p\n" 2>/dev/null | sort || echo "  (none found)"
+
+backup-restore:
+	@bash scripts/restore.sh $(FILE)
