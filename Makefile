@@ -1,4 +1,4 @@
-.PHONY: help install dev up down clean test lint format typecheck migrate migrate-create run
+.PHONY: help install dev up down clean test lint format typecheck migrate migrate-create run prod-up-blue prod-up-green prod-down prod-logs prod-ps
 
 help:
 	@echo "AgentAuth - Available commands:"
@@ -14,6 +14,11 @@ help:
 	@echo "  migrate        - Run database migrations"
 	@echo "  migrate-create - Create a new migration"
 	@echo "  run            - Run development server"
+	@echo "  prod-up-blue   - Start production postgres, redis, celery, and blue app slot"
+	@echo "  prod-up-green  - Start production postgres, redis, celery, and green app slot"
+	@echo "  prod-down      - Stop all production services"
+	@echo "  prod-logs      - Tail logs from all production services"
+	@echo "  prod-ps        - Show status of production services"
 
 install:
 	uv sync
@@ -62,3 +67,18 @@ migrate-create:
 
 run:
 	uv run uvicorn agentauth.main:app --reload --host 0.0.0.0 --port 8000
+
+prod-up-blue:
+	docker compose -f docker-compose.prod.yml --profile blue up -d
+
+prod-up-green:
+	docker compose -f docker-compose.prod.yml --profile green up -d
+
+prod-down:
+	docker compose -f docker-compose.prod.yml --profile blue --profile green down
+
+prod-logs:
+	docker compose -f docker-compose.prod.yml --profile blue --profile green logs -f
+
+prod-ps:
+	docker compose -f docker-compose.prod.yml --profile blue --profile green ps

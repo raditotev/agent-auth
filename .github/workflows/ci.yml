@@ -1,0 +1,119 @@
+name: CI/CD
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  # Job 1: Lint, format, and type-check the codebase.
+  # Runs on every push and pull request to any branch.
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Ruff lint
+        run: uv run ruff check src/
+
+      - name: Ruff format check
+        run: uv run ruff format --check src/
+
+      - name: Mypy type check
+        run: uv run mypy src/
+
+  # Job 2: Run the full test suite against real Postgres and Redis containers.
+  # Depends on lint-and-typecheck passing first.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: agentauth_test
+          POSTGRES_USER: agentauth
+          POSTGRES_PASSWORD: agentauth_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentauth"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://agentauth:agentauth_test@localhost:5432/agentauth_test
+      REDIS_URL: redis://localhost:6379
+      SECRET_KEY: test-secret-key-for-ci-only
+      ENVIRONMENT: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run Alembic migrations
+        run: uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest -x -q
+
+  # Job 3: Deploy to the VPS via SSH.
+  # Only runs on push to main, after both lint and tests pass.
+  #
+  # Required GitHub repository secrets:
+  #   DEPLOY_HOST      — IP address or hostname of the target VPS
+  #   DEPLOY_USER      — SSH username on the VPS
+  #   DEPLOY_SSH_KEY   — Private SSH key (PEM) with access to the VPS
+  #   DEPLOY_PATH      — Absolute path to the project directory on the VPS
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            bash scripts/deploy.sh

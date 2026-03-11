@@ -47,6 +47,7 @@ Three jobs:
 **File:** `docker-compose.prod.yml`
 
 Services:
+
 - **postgres** - PostgreSQL 16, persistent volume, healthcheck, restart always
 - **redis** - Redis 7, persistent volume (AOF), healthcheck, restart always
 - **app-blue** - App container, profile `blue`, port 8001:8000, depends on postgres+redis
@@ -74,6 +75,7 @@ Config files stored in repo under `nginx/` for reference.
 **File:** `scripts/deploy.sh`
 
 Steps:
+
 1. Read current slot from `/opt/agentauth/.active-slot` (default: none/blue)
 2. Set target = opposite slot
 3. `git pull origin main`
@@ -91,6 +93,7 @@ Steps:
 **File:** `docs/deployment.md`
 
 Sections:
+
 1. Prerequisites (VPS specs, software)
 2. Initial server setup (SSH, firewall, deploy user)
 3. Cloudflare Tunnel setup
@@ -104,15 +107,15 @@ Sections:
 
 ## Files to Create
 
-| File | Purpose |
-|------|---------|
-| `.github/workflows/ci.yml` | CI pipeline |
-| `docker-compose.prod.yml` | Production services |
-| `nginx/agentauth.conf` | Main Nginx site config |
-| `nginx/blue.conf` | Blue upstream |
-| `nginx/green.conf` | Green upstream |
-| `scripts/deploy.sh` | Deploy + rollback script |
-| `docs/deployment.md` | Production deployment guide |
+| File                       | Purpose                     |
+| -------------------------- | --------------------------- |
+| `.github/workflows/ci.yml` | CI pipeline                 |
+| `docker-compose.prod.yml`  | Production services         |
+| `nginx/agentauth.conf`     | Main Nginx site config      |
+| `nginx/blue.conf`          | Blue upstream               |
+| `nginx/green.conf`         | Green upstream              |
+| `scripts/deploy.sh`        | Deploy + rollback script    |
+| `docs/deployment.md`       | Production deployment guide |
 
 ## No Changes to Existing Code
 

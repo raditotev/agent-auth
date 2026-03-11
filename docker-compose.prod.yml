@@ -1,0 +1,129 @@
+# AgentAuth Production Docker Compose — Blue/Green Deployment
+#
+# Blue/Green usage:
+#   Start blue slot:  docker compose -f docker-compose.prod.yml --profile blue up -d
+#   Start green slot: docker compose -f docker-compose.prod.yml --profile green up -d
+#
+# Infrastructure services (postgres, redis, celery-worker, celery-beat) are always
+# started regardless of profile. Only the app-blue / app-green containers are gated.
+#
+# Nginx (or another reverse proxy) should route traffic between:
+#   blue  → 127.0.0.1:8001
+#   green → 127.0.0.1:8002
+#
+# Deployment workflow:
+#   1. Pull / build new image: docker compose -f docker-compose.prod.yml build
+#   2. Bring up the idle slot, e.g. green: --profile green up -d
+#   3. Healthcheck passes → switch proxy upstream to :8002
+#   4. Drain and stop the old slot: docker compose -f docker-compose.prod.yml stop app-blue
+
+services:
+
+  # ── Postgres ─────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    restart: always
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - agentauth-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Not exposed externally — accessible only within the Compose network
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - agentauth-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    # Not exposed externally — accessible only within the Compose network
+
+  # ── App — Blue slot (port 8001) ───────────────────────────────────────────────
+  # Activate with: --profile blue
+  app-blue:
+    build: .
+    image: agentauth:latest
+    profiles: [blue]
+    ports:
+      - "127.0.0.1:8001:8000"   # loopback only — proxy must terminate TLS
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── App — Green slot (port 8002) ──────────────────────────────────────────────
+  # Activate with: --profile green
+  app-green:
+    build: .
+    image: agentauth:latest
+    profiles: [green]
+    ports:
+      - "127.0.0.1:8002:8000"   # loopback only — proxy must terminate TLS
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Celery worker ─────────────────────────────────────────────────────────────
+  celery-worker:
+    image: agentauth:latest
+    command: >
+      uv run celery -A agentauth.tasks.celery_app worker
+      --loglevel=info
+      --concurrency=4
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  # ── Celery beat (scheduler) ───────────────────────────────────────────────────
+  celery-beat:
+    image: agentauth:latest
+    command: >
+      uv run celery -A agentauth.tasks.celery_app beat
+      --loglevel=info
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+# ── Named volumes (persistent across restarts and deployments) ────────────────
+volumes:
+  agentauth-pgdata:
+  agentauth-redisdata:
