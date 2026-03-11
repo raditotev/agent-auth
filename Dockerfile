@@ -5,11 +5,15 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
+# uv cache in /tmp so it's writable by any user
+ENV UV_CACHE_DIR=/tmp/.cache/uv
+
 # Install dependencies first (layer caching)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy application code
+COPY README.md ./
 COPY alembic.ini ./
 COPY migrations/ ./migrations/
 COPY src/ ./src/
@@ -18,8 +22,8 @@ COPY src/ ./src/
 RUN uv sync --frozen --no-dev
 
 # Run as non-root user
-RUN adduser --disabled-password --no-create-home appuser
-USER appuser
+RUN chown -R nobody:nogroup /tmp/.cache/uv /app
+USER nobody
 
 EXPOSE 8000
 

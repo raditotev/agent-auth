@@ -167,8 +167,10 @@ APP_NAME=AgentAuth
 ENVIRONMENT=production
 DEBUG=false
 
-DATABASE_URL=postgresql+asyncpg://agentauth:YOUR_DB_PASSWORD@localhost:5432/agentauth
-REDIS_URL=redis://localhost:6379/0
+# DATABASE_URL and REDIS_URL are intentionally omitted here.
+# docker-compose.prod.yml injects them with the correct Docker service hostnames
+# (postgres:5432 and redis:6379). Setting them in .env would cause localhost
+# to be used inside the container instead.
 
 SECRET_KEY=your-secret-key-here          # generate: openssl rand -hex 32
 ACCESS_TOKEN_EXPIRE_MINUTES=15
@@ -181,7 +183,7 @@ ADMIN_API_KEY=your-admin-api-key-here    # generate: openssl rand -hex 32
 
 POSTGRES_DB=agentauth
 POSTGRES_USER=agentauth
-POSTGRES_PASSWORD=YOUR_DB_PASSWORD       # must match DATABASE_URL
+POSTGRES_PASSWORD=YOUR_DB_PASSWORD
 ```
 
 **Create the initial slot state file:**
@@ -237,12 +239,12 @@ Both should return a `200 OK` response.
 
 The CI pipeline (`.github/workflows/ci.yml`) runs **lint-and-typecheck → test → deploy** on every push to `main`. The deploy step SSHes into the VPS and executes `bash scripts/deploy.sh`.
 
-**Required GitHub Secrets** — add in *Settings > Secrets and variables > Actions*:
+**Required GitHub Secrets** — add in _Settings > Secrets and variables > Actions_:
 
-| Secret | Description |
-|---|---|
-| `DEPLOY_HOST` | IP address or hostname of the VPS |
-| `DEPLOY_SSH_KEY` | Private SSH key (PEM format) |
+| Secret           | Description                       |
+| ---------------- | --------------------------------- |
+| `DEPLOY_HOST`    | IP address or hostname of the VPS |
+| `DEPLOY_SSH_KEY` | Private SSH key (PEM format)      |
 
 **Generate a dedicated SSH key pair for GitHub Actions:**
 
@@ -273,6 +275,7 @@ bash scripts/deploy.sh
 ```
 
 What happens step by step:
+
 1. `git pull origin main`
 2. `docker compose build` for the inactive slot
 3. `uv run alembic upgrade head`
@@ -355,11 +358,11 @@ AgentAuth ships with a full observability stack (Loki + Promtail + Grafana) that
 
 ### Services Overview
 
-| Service | Role | Accessibility |
-|---------|------|---------------|
-| **Loki** | Log storage and querying engine | Internal only (port 3100, not exposed publicly) |
-| **Promtail** | Log scraping agent — reads Docker container logs, parses JSON, extracts labels | Internal only |
-| **Grafana** | Dashboard UI for log exploration and pre-built panels | `http://localhost:3000` (or via SSH tunnel) |
+| Service      | Role                                                                           | Accessibility                                   |
+| ------------ | ------------------------------------------------------------------------------ | ----------------------------------------------- |
+| **Loki**     | Log storage and querying engine                                                | Internal only (port 3100, not exposed publicly) |
+| **Promtail** | Log scraping agent — reads Docker container logs, parses JSON, extracts labels | Internal only                                   |
+| **Grafana**  | Dashboard UI for log exploration and pre-built panels                          | `http://localhost:3000` (or via SSH tunnel)     |
 
 ### Starting the Monitoring Stack
 
@@ -417,16 +420,16 @@ docker compose -f docker-compose.prod.yml restart loki
 
 The **AgentAuth Operations** dashboard is auto-provisioned on Grafana startup and contains:
 
-| Panel | What it shows |
-|-------|--------------|
-| **Request Rate** | Request throughput grouped by HTTP status code |
-| **4xx Error Rate** | Client error rate trend over time |
-| **5xx Error Rate** | Server error rate trend over time |
-| **P50 / P95 / P99 Latency** | Response time percentiles |
-| **Authentication Failures** | Failed auth attempts over time |
-| **Rate Limit Hits** | 429 responses over time (sliding-window breaches) |
-| **Top Agents by Request Count** | Most active agents by request volume |
-| **Endpoint Breakdown** | Traffic distribution per API path |
+| Panel                           | What it shows                                     |
+| ------------------------------- | ------------------------------------------------- |
+| **Request Rate**                | Request throughput grouped by HTTP status code    |
+| **4xx Error Rate**              | Client error rate trend over time                 |
+| **5xx Error Rate**              | Server error rate trend over time                 |
+| **P50 / P95 / P99 Latency**     | Response time percentiles                         |
+| **Authentication Failures**     | Failed auth attempts over time                    |
+| **Rate Limit Hits**             | 429 responses over time (sliding-window breaches) |
+| **Top Agents by Request Count** | Most active agents by request volume              |
+| **Endpoint Breakdown**          | Traffic distribution per API path                 |
 
 ---
 
@@ -437,12 +440,12 @@ AgentAuth backs up **PostgreSQL** (full logical dump) and **Redis** (RDB snapsho
 
 ### Retention policy
 
-| Tier | Frequency | Retention | Files kept |
-|------|-----------|-----------|-----------|
-| Daily | Every day at 02:00 UTC | 7 days | 7 |
-| Weekly | Every Sunday | 4 weeks | 4 |
-| Monthly | 1st of month | 3 months | 3 |
-| **Total on disk** | | | **≤ 14 PG + 7 Redis** |
+| Tier              | Frequency              | Retention | Files kept            |
+| ----------------- | ---------------------- | --------- | --------------------- |
+| Daily             | Every day at 02:00 UTC | 7 days    | 7                     |
+| Weekly            | Every Sunday           | 4 weeks   | 4                     |
+| Monthly           | 1st of month           | 3 months  | 3                     |
+| **Total on disk** |                        |           | **≤ 14 PG + 7 Redis** |
 
 Redis holds ephemeral data (rate-limit windows, token caches). AOF provides crash recovery;
 the daily RDB snapshot is an additional safety net. Only daily rotation is applied to Redis.
@@ -460,12 +463,12 @@ Add to the host's `/etc/cron.d/agentauth-backup`:
 
 Set in `/home/admin/agentauth/.env` (or shell environment):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BACKUP_DIR` | `/home/admin/agentauth/backups` | Local directory for backup files |
-| `BACKUP_REMOTE` | *(empty)* | rclone remote path for offsite sync (e.g. `r2:agentauth-backups`) |
-| `POSTGRES_CONTAINER` | auto-detect | Docker container name for Postgres |
-| `REDIS_CONTAINER` | auto-detect | Docker container name for Redis |
+| Variable             | Default                         | Description                                                       |
+| -------------------- | ------------------------------- | ----------------------------------------------------------------- |
+| `BACKUP_DIR`         | `/home/admin/agentauth/backups` | Local directory for backup files                                  |
+| `BACKUP_REMOTE`      | _(empty)_                       | rclone remote path for offsite sync (e.g. `r2:agentauth-backups`) |
+| `POSTGRES_CONTAINER` | auto-detect                     | Docker container name for Postgres                                |
+| `REDIS_CONTAINER`    | auto-detect                     | Docker container name for Redis                                   |
 
 ### Running a backup manually
 
@@ -487,6 +490,7 @@ make backup-list
 ```
 
 Output example:
+
 ```
 PostgreSQL backups:
   2026-03-11   1840 KB  /home/admin/agentauth/backups/postgres/daily/agentauth_pg_2026-03-11_daily.dump
@@ -521,6 +525,7 @@ make backup-restore FILE=/home/admin/agentauth/backups/postgres/daily/agentauth_
 ```
 
 After restore:
+
 1. Verify the app is healthy: `make prod-ps`
 2. Check for migration drift: `uv run alembic current`
 3. Smoke-test the `/health` endpoint
@@ -584,7 +589,7 @@ docker compose -f docker-compose.prod.yml ps redis
 
 **CI deploy job fails**
 
-Ensure both GitHub Secrets are configured in *Settings > Secrets and variables > Actions*: `DEPLOY_HOST`, `DEPLOY_SSH_KEY`.
+Ensure both GitHub Secrets are configured in _Settings > Secrets and variables > Actions_: `DEPLOY_HOST`, `DEPLOY_SSH_KEY`.
 
 **Migrations fail during deploy**
 
