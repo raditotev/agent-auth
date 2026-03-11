@@ -3,6 +3,7 @@
 import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy import (
     ARRAY,

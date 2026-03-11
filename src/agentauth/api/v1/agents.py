@@ -6,7 +6,6 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.config import settings
 from agentauth.core.database import DbSession
@@ -313,17 +312,10 @@ async def create_agent(
 async def list_agents(
     request: Request,
     identity_service: Annotated[IdentityService, Depends(get_identity_service)],
-    parent_agent_id: UUID | None = Query(
-        None,
-        description="Filter by parent agent ID",
-    ),
-    status_filter: AgentStatus | None = Query(
-        None,
-        alias="status",
-        description="Filter by agent status",
-    ),
-    limit: int = Query(50, ge=1, le=100, description="Maximum results to return"),
-    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    parent_agent_id: Annotated[UUID | None, Query(description="Filter by parent agent ID")] = None,
+    status_filter: Annotated[AgentStatus | None, Query(alias="status", description="Filter by agent status")] = None,
+    limit: Annotated[int, Query(ge=1, le=100, description="Maximum results to return")] = 50,
+    offset: Annotated[int, Query(ge=0, description="Offset for pagination")] = 0,
 ) -> AgentListResponse:
     """List agents scoped to the caller's subtree."""
     try:

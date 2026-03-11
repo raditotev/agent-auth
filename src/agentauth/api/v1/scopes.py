@@ -5,7 +5,12 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from agentauth.core.database import DbSession
-from agentauth.schemas.scope import ScopeCreate, ScopeListResponse, ScopeResponse, ScopeResolveResponse
+from agentauth.schemas.scope import (
+    ScopeCreate,
+    ScopeListResponse,
+    ScopeResponse,
+    ScopeResolveResponse,
+)
 from agentauth.services.scope import ScopeService
 
 logger = structlog.get_logger()

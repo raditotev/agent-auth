@@ -26,15 +26,15 @@ router = APIRouter(prefix="/audit", tags=["Audit"])
 async def list_audit_events(
     _: Annotated[None, Depends(require_admin_key)],
     session: DbSession,
-    event_type: str | None = Query(None, description="Filter by event type"),
-    actor_id: UUID | None = Query(None, description="Filter by actor agent ID"),
-    target_id: UUID | None = Query(None, description="Filter by target resource ID"),
-    outcome: EventOutcome | None = Query(None, description="Filter by outcome"),
-    from_date: datetime | None = Query(None, description="Start of date range (ISO 8601)"),
-    to_date: datetime | None = Query(None, description="End of date range (ISO 8601)"),
-    after: UUID | None = Query(None, description="Cursor: return events after this ID"),
-    limit: int = Query(50, ge=1, le=500, description="Page size"),
-    export: bool = Query(False, description="Export as JSONL instead of JSON"),
+    event_type: Annotated[str | None, Query(description="Filter by event type")] = None,
+    actor_id: Annotated[UUID | None, Query(description="Filter by actor agent ID")] = None,
+    target_id: Annotated[UUID | None, Query(description="Filter by target resource ID")] = None,
+    outcome: Annotated[EventOutcome | None, Query(description="Filter by outcome")] = None,
+    from_date: Annotated[datetime | None, Query(description="Start of date range (ISO 8601)")] = None,
+    to_date: Annotated[datetime | None, Query(description="End of date range (ISO 8601)")] = None,
+    after: Annotated[UUID | None, Query(description="Cursor: return events after this ID")] = None,
+    limit: Annotated[int, Query(ge=1, le=500, description="Page size")] = 50,
+    export: Annotated[bool, Query(description="Export as JSONL instead of JSON")] = False,
 ) -> Response:
     """
     Query the audit event log with flexible filters and cursor-based pagination.

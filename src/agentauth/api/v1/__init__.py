@@ -2,7 +2,17 @@
 
 from fastapi import APIRouter
 
-from agentauth.api.v1 import admin, agents, audit, auth, credentials, delegations, policies, scopes, webhooks
+from agentauth.api.v1 import (
+    admin,
+    agents,
+    audit,
+    auth,
+    credentials,
+    delegations,
+    policies,
+    scopes,
+    webhooks,
+)
 
 api_router = APIRouter()
 

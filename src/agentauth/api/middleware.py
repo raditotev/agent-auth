@@ -13,8 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from agentauth.core.database import get_session_maker
-from agentauth.core.exceptions import AuthenticationError
-from agentauth.models.agent import Agent, AgentStatus
+from agentauth.models.agent import Agent
 from agentauth.services.credential import CredentialService
 
 # Mapping of HTTP methods to authorization actions

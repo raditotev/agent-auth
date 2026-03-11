@@ -4,7 +4,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Form, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,11 +13,8 @@ from agentauth.core.exceptions import AuthenticationError, TokenError
 from agentauth.models.agent import Agent
 from agentauth.models.audit import ActorType, EventOutcome
 from agentauth.schemas.token import (
-    TokenIntrospectionRequest,
     TokenIntrospectionResponse,
-    TokenRequest,
     TokenResponse,
-    TokenRevocationRequest,
 )
 from agentauth.services.audit import AuditService
 from agentauth.services.credential import CredentialService
@@ -43,11 +40,11 @@ async def _parse_token_body(request: Request) -> dict[str, Any]:
     if "application/json" in content_type:
         try:
             return await request.json()
-        except Exception:
+        except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"error": "invalid_request", "error_description": "Invalid JSON body"},
-            )
+            ) from e
     # Default: form-encoded (OAuth 2.0 standard)
     form = await request.form()
     return dict(form)
@@ -558,8 +555,7 @@ async def _handle_agent_delegation(
         scopes_to_grant = [s for s in scopes_to_grant if s in requested_list]
 
     # Build delegation chain claim
-    from uuid import UUID as PyUUID
-    full_chain = [PyUUID(uid) for uid in existing_chain] + [requesting_agent.id]
+    full_chain = [UUID(uid) for uid in existing_chain] + [requesting_agent.id]
 
     try:
         token_response = await token_service.mint_token(
