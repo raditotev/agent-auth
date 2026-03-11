@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from uuid_extensions.uuid7 import uuid7
+from uuid_extensions.uuid7 import uuid7  # type: ignore[import-untyped]
 
 from agentauth.config import settings
 from agentauth.core.url_utils import mask_url as _mask_url

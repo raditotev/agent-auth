@@ -1,7 +1,7 @@
 """Redis client for caching and rate limiting."""
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import redis.asyncio as redis
 import structlog
@@ -52,7 +52,7 @@ class RedisClient:
 
         try:
             value = await self._client.get(key)
-            return value
+            return cast(str | None, value)
         except Exception as e:
             logger.warning("Redis GET failed", key=key, error=str(e))
             return None
@@ -142,7 +142,7 @@ class RedisClient:
             return None
 
         try:
-            return json.loads(value)
+            return cast(dict[str, Any] | None, json.loads(value))
         except json.JSONDecodeError as e:
             logger.warning("Failed to parse JSON from Redis", key=key, error=str(e))
             return None
@@ -179,7 +179,7 @@ class RedisClient:
             await self.connect()
         assert self._client is not None
         try:
-            return await self._client.zremrangebyscore(key, min_score, max_score)
+            return int(await self._client.zremrangebyscore(key, min_score, max_score))
         except Exception as e:
             logger.warning("Redis ZREMRANGEBYSCORE failed", key=key, error=str(e))
             return 0
@@ -190,7 +190,7 @@ class RedisClient:
             await self.connect()
         assert self._client is not None
         try:
-            return await self._client.zcard(key)
+            return int(await self._client.zcard(key))
         except Exception as e:
             logger.warning("Redis ZCARD failed", key=key, error=str(e))
             return 0
@@ -201,7 +201,7 @@ class RedisClient:
             await self.connect()
         assert self._client is not None
         try:
-            return await self._client.zadd(key, mapping)
+            return int(await self._client.zadd(key, mapping))
         except Exception as e:
             logger.warning("Redis ZADD failed", key=key, error=str(e))
             return 0

@@ -2,7 +2,7 @@
 
 import enum
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -99,7 +99,7 @@ class Credential(BaseModel):
 
     # Flexible metadata (IP allowlist, usage notes, etc.)
     # Use 'credential_metadata' to avoid conflict with SQLAlchemy's metadata attribute
-    credential_metadata: Mapped[dict | None] = mapped_column(
+    credential_metadata: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",  # Column name in DB
         JSONB,
         nullable=True,

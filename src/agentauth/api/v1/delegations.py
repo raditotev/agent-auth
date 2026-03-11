@@ -1,5 +1,6 @@
 """Delegation management endpoints."""
 
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -149,7 +150,7 @@ async def revoke_delegation(
     delegation_id: UUID,
     session: DbSession,
     cascade: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Revoke a delegation and optionally all downstream delegations."""
     service = DelegationService(session)
     count = await service.revoke_delegation(delegation_id, cascade=cascade)

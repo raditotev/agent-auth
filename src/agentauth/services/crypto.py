@@ -357,11 +357,11 @@ class CryptoService:
             jwk["kty"] = "EC"
             jwk["crv"] = "P-256"
 
-            public_numbers = public_key.public_numbers()
+            ec_public_numbers = public_key.public_numbers()
 
             # Convert x and y coordinates to base64url
-            jwk["x"] = self._int_to_base64url(public_numbers.x)
-            jwk["y"] = self._int_to_base64url(public_numbers.y)
+            jwk["x"] = self._int_to_base64url(ec_public_numbers.x)
+            jwk["y"] = self._int_to_base64url(ec_public_numbers.y)
 
         return jwk
 

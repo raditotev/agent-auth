@@ -2,7 +2,7 @@
 
 import enum
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -115,7 +115,7 @@ class Agent(BaseModel):
 
     # Flexible metadata (runtime info, model version, capabilities, contact/billing refs)
     # Use 'agent_metadata' to avoid conflict with SQLAlchemy's metadata attribute
-    agent_metadata: Mapped[dict | None] = mapped_column(
+    agent_metadata: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",  # Column name in DB
         JSONB,
         nullable=True,

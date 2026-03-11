@@ -9,7 +9,7 @@ from agentauth.tasks.celery_app import celery_app
 logger = structlog.get_logger()
 
 
-@celery_app.task(name="agentauth.rotate_signing_keys")
+@celery_app.task(name="agentauth.rotate_signing_keys")  # type: ignore[untyped-decorator]
 def rotate_signing_keys() -> dict[str, list[str]]:
     """
     Rotate signing keys task.

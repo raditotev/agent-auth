@@ -1,6 +1,6 @@
 """Authentication endpoints."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 import structlog
@@ -39,7 +39,7 @@ async def _parse_token_body(request: Request) -> dict[str, Any]:
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
         try:
-            return await request.json()
+            return cast(dict[str, Any], await request.json())
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -47,13 +47,13 @@ async def _parse_token_body(request: Request) -> dict[str, Any]:
             ) from e
     # Default: form-encoded (OAuth 2.0 standard)
     form = await request.form()
-    return dict(form)
+    return cast(dict[str, Any], dict(form))
 
 
 @router.get("/jwks")
 async def get_jwks(
     session: DbSession,
-) -> dict[str, list[dict]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     Get JSON Web Key Set (JWKS) containing public keys for token verification.
 

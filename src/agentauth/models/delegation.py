@@ -1,6 +1,7 @@
 """Delegation model — authorization chain between agents."""
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import UUID as SAUUID
@@ -38,7 +39,7 @@ class Delegation(BaseModel):
         default=list,
         comment="Scopes granted — must be subset of delegator's effective scopes",
     )
-    constraints: Mapped[dict] = mapped_column(
+    constraints: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,

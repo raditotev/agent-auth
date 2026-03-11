@@ -1,6 +1,7 @@
 """AuditEvent model - immutable log of security-relevant events."""
 
 import enum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Enum, String
@@ -82,7 +83,7 @@ class AuditEvent(BaseModel):
     )
 
     # Flexible metadata (IP, user agent, request details, parent chain, etc.)
-    event_metadata: Mapped[dict | None] = mapped_column(
+    event_metadata: Mapped[dict[str, Any] | None] = mapped_column(
         "metadata",  # Column name in DB
         JSONB,
         nullable=True,

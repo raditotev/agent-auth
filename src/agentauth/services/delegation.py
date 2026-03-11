@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -42,7 +43,7 @@ class DelegationService:
         delegator_agent_id: UUID,
         delegate_agent_id: UUID,
         scopes: list[str],
-        constraints: dict | None = None,
+        constraints: dict[str, Any] | None = None,
         max_chain_depth: int = 3,
         expires_at: datetime | None = None,
     ) -> Delegation:
@@ -201,12 +202,12 @@ class DelegationService:
         obj_result = await self.session.execute(
             select(Delegation).where(Delegation.id.in_(ordered_ids))
         )
-        by_id = {d.id: d for d in obj_result.scalars().all()}
-        chain = [by_id[oid] for oid in ordered_ids if oid in by_id]
+        by_id = {str(d.id): d for d in obj_result.scalars().all()}
+        chain = [by_id[str(oid)] for oid in ordered_ids if str(oid) in by_id]
 
         # --- cache write ---
         try:
-            await redis_client.set(  # type: ignore[possibly-undefined]
+            await redis_client.set(
                 cache_key,
                 json.dumps([str(oid) for oid in ordered_ids]),
                 ex=_CHAIN_CACHE_TTL,

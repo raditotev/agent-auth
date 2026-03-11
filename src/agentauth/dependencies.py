@@ -1,8 +1,9 @@
 """FastAPI dependency injection utilities."""
 
 import secrets
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, HTTPException, Request, status
 
@@ -90,7 +91,7 @@ async def verify_agent(request: Request) -> AgentIdentity:
     return identity
 
 
-def requires_scope(*scopes: str):
+def requires_scope(*scopes: str) -> Callable[..., Awaitable[AgentIdentity]]:
     """
     Dependency factory that enforces one or more required scopes.
 
@@ -162,7 +163,7 @@ def get_current_agent(request: Request) -> Agent:
             headers={"WWW-Authenticate": 'ApiKey realm="AgentAuth"'},
         )
 
-    return request.state.agent
+    return cast(Agent, request.state.agent)
 
 
 def require_admin_key(request: Request) -> None:
@@ -242,7 +243,7 @@ def require_root_agent(
     return agent
 
 
-def require_trust_level(minimum_level: TrustLevel):
+def require_trust_level(minimum_level: TrustLevel) -> Callable[..., Agent]:
     """
     Factory function to create a dependency that requires a minimum trust level.
 

@@ -158,7 +158,7 @@ class AuthorizationService:
         )
 
     @staticmethod
-    def _matches_subjects(subjects: dict, agent_id: UUID) -> bool:
+    def _matches_subjects(subjects: dict[str, Any], agent_id: UUID) -> bool:
         """
         Match agent against policy subjects.
 
@@ -184,7 +184,7 @@ class AuthorizationService:
         return action in policy_actions or "*" in policy_actions
 
     @staticmethod
-    def _matches_resources(resources: dict, resource: str) -> bool:
+    def _matches_resources(resources: dict[str, Any], resource: str) -> bool:
         """
         Match the requested resource against policy resources.
 
@@ -211,7 +211,7 @@ class AuthorizationService:
         return False
 
     @staticmethod
-    def _matches_conditions(conditions: dict, context: dict[str, Any]) -> bool:
+    def _matches_conditions(conditions: dict[str, Any], context: dict[str, Any]) -> bool:
         """
         Evaluate optional conditions.
 
@@ -230,7 +230,7 @@ class AuthorizationService:
         return True
 
     @staticmethod
-    def _context_hash(context: dict) -> str:
+    def _context_hash(context: dict[str, Any]) -> str:
         """Generate a short hash of the context for cache key inclusion."""
         import hashlib
 
@@ -242,7 +242,7 @@ class AuthorizationService:
         agent_id: UUID,
         action: str,
         resource: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> PolicyEvaluateResponse | None:
         """Try to retrieve a cached authorization decision from Redis."""
         try:
@@ -264,7 +264,7 @@ class AuthorizationService:
         agent_id: UUID,
         action: str,
         resource: str,
-        context: dict | None,
+        context: dict[str, Any] | None,
         result: PolicyEvaluateResponse,
     ) -> None:
         """Cache the authorization decision in Redis."""

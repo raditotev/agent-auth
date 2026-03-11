@@ -87,7 +87,7 @@ class IdentityService:
         # Compute actual depth from root by walking up the parent chain
         depth = 0
         current = parent
-        visited: set = {current.id}
+        visited: set[UUID] = {current.id}
         while current.parent_agent_id is not None:
             result = await self.session.execute(
                 select(Agent).where(Agent.id == current.parent_agent_id)

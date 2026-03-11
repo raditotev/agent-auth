@@ -1,5 +1,6 @@
 """Webhook subscription model (Task 4.5)."""
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import UUID as SAUUID
@@ -54,7 +55,7 @@ class WebhookDeliveryLog(BaseModel):
         index=True,
     )
     event_type: Mapped[str] = mapped_column(String(255), nullable=False)
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status_code: Mapped[int | None] = mapped_column(nullable=True)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

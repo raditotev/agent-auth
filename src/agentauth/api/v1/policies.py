@@ -1,5 +1,6 @@
 """Policy CRUD endpoints."""
 
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -152,7 +153,7 @@ async def list_policies(
     summary="Policy syntax reference",
     description="Returns documentation on the pattern syntax for policy subjects, resources, and conditions.",
 )
-async def policy_syntax() -> dict:
+async def policy_syntax() -> dict[str, Any]:
     """
     Policy syntax reference for programmatic clients.
 

@@ -1,6 +1,7 @@
 """Policy model for authorization rule management."""
 
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import UUID as SAUUID
@@ -36,13 +37,13 @@ class Policy(BaseModel):
         nullable=False,
         default=PolicyEffect.ALLOW,
     )
-    subjects: Mapped[dict] = mapped_column(
+    subjects: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,
         comment="Agent IDs, tags, or wildcard patterns this policy applies to",
     )
-    resources: Mapped[dict] = mapped_column(
+    resources: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,
@@ -54,7 +55,7 @@ class Policy(BaseModel):
         default=list,
         comment="Actions: read, write, execute, delegate, admin",
     )
-    conditions: Mapped[dict] = mapped_column(
+    conditions: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,

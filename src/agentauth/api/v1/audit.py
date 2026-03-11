@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 import structlog
@@ -71,7 +71,7 @@ async def list_audit_events(
     result = await session.execute(query)
     events = list(result.scalars().all())
 
-    def event_to_dict(e: AuditEvent) -> dict:
+    def event_to_dict(e: AuditEvent) -> dict[str, Any]:
         return {
             "id": str(e.id),
             "event_type": e.event_type,

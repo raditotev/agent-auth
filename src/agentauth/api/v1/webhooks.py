@@ -1,6 +1,7 @@
 """Webhook subscription management endpoints (Task 4.5)."""
 
 import secrets
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -138,7 +139,7 @@ async def get_delivery_logs(
     subscription_id: UUID,
     session: DbSession,
     limit: int = 50,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Get delivery logs for a subscription."""
     result = await session.execute(
         select(WebhookDeliveryLog)

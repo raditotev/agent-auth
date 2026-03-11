@@ -7,13 +7,13 @@ Usage — start the beat scheduler for periodic tasks:
     uv run celery -A agentauth.tasks.celery_app beat --loglevel=info
 """
 
-from celery import Celery
-from celery.signals import worker_process_init
+from celery import Celery  # type: ignore[import-untyped]
+from celery.signals import worker_process_init  # type: ignore[import-untyped]
 
 from agentauth.config import settings
 
 
-@worker_process_init.connect
+@worker_process_init.connect  # type: ignore[untyped-decorator]
 def init_worker_logging(**kwargs: object) -> None:  # noqa: ARG001
     """Set up structlog in each Celery worker process."""
     from agentauth.core.logging import setup_logging

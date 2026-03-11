@@ -1,6 +1,7 @@
 """Pydantic schemas for delegation operations."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -11,7 +12,7 @@ class DelegationCreate(BaseModel):
 
     delegate_agent_id: UUID = Field(..., description="Agent receiving the delegation")
     scopes: list[str] = Field(..., description="Scopes being delegated")
-    constraints: dict = Field(
+    constraints: dict[str, Any] = Field(
         default_factory=dict,
         description="Optional constraints: expires_at, resource restrictions",
     )
@@ -31,7 +32,7 @@ class DelegationResponse(BaseModel):
     delegator_agent_id: UUID
     delegate_agent_id: UUID
     scopes: list[str]
-    constraints: dict
+    constraints: dict[str, Any]
     chain_depth: int
     max_chain_depth: int
     expires_at: datetime | None

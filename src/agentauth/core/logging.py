@@ -2,6 +2,7 @@
 
 import logging
 import socket
+from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
@@ -12,8 +13,8 @@ get_logger = structlog.get_logger
 def _add_logger_name(
     logger: Any,  # noqa: ANN401
     method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
+    event_dict: MutableMapping[str, Any],
+) -> MutableMapping[str, Any]:
     """Add logger name; tolerates loggers without a .name attribute (e.g. PrintLogger)."""
     record = event_dict.get("_record")
     if record is not None:
@@ -26,8 +27,8 @@ def _add_logger_name(
 def _inject_context_fields(
     logger: Any,  # noqa: ANN401
     method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
+    event_dict: MutableMapping[str, Any],
+) -> MutableMapping[str, Any]:
     """Inject service-level context fields into every log entry."""
     from agentauth.config import settings
 

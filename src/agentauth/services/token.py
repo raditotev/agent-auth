@@ -203,7 +203,7 @@ class TokenService:
             # Create JWT with key ID in header
             token = jwt.encode(
                 claims,
-                private_key_obj,
+                private_key_obj,  # type: ignore[arg-type]
                 algorithm=signing_key.algorithm.value,
                 headers={"kid": signing_key.key_id},
             )
@@ -277,11 +277,11 @@ class TokenService:
             options = {"verify_aud": expected_audience is not None}
             decoded = jwt.decode(
                 token,
-                public_key_obj,
+                public_key_obj,  # type: ignore[arg-type]
                 algorithms=[signing_key.algorithm.value],
                 issuer=self.issuer,
                 audience=expected_audience,
-                options=options,
+                options=options,  # type: ignore[arg-type]
             )
 
             # Validate token type if specified

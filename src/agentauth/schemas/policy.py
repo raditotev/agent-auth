@@ -1,6 +1,7 @@
 """Pydantic schemas for policy operations."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -14,11 +15,11 @@ class PolicyCreate(BaseModel):
     name: str = Field(..., description="Human-readable policy name")
     description: str = Field(default="", description="Policy description")
     effect: PolicyEffect = Field(default=PolicyEffect.ALLOW, description="allow or deny")
-    subjects: dict = Field(
+    subjects: dict[str, Any] = Field(
         default_factory=dict,
         description="Agent IDs / patterns this policy applies to",
     )
-    resources: dict = Field(
+    resources: dict[str, Any] = Field(
         default_factory=dict,
         description="API endpoints / service names covered",
     )
@@ -26,7 +27,7 @@ class PolicyCreate(BaseModel):
         default_factory=list,
         description="Actions: read, write, execute, delegate, admin",
     )
-    conditions: dict = Field(
+    conditions: dict[str, Any] = Field(
         default_factory=dict,
         description="Optional conditions: time windows, IP ranges, rate limits",
     )
@@ -40,10 +41,10 @@ class PolicyUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     effect: PolicyEffect | None = None
-    subjects: dict | None = None
-    resources: dict | None = None
+    subjects: dict[str, Any] | None = None
+    resources: dict[str, Any] | None = None
     actions: list[str] | None = None
-    conditions: dict | None = None
+    conditions: dict[str, Any] | None = None
     priority: int | None = None
     enabled: bool | None = None
 
@@ -56,10 +57,10 @@ class PolicyResponse(BaseModel):
     name: str
     description: str
     effect: PolicyEffect
-    subjects: dict
-    resources: dict
+    subjects: dict[str, Any]
+    resources: dict[str, Any]
     actions: list[str]
-    conditions: dict
+    conditions: dict[str, Any]
     priority: int
     enabled: bool
     created_at: datetime
@@ -81,7 +82,7 @@ class PolicyEvaluateRequest(BaseModel):
     agent_id: UUID = Field(..., description="Agent requesting access")
     action: str = Field(..., description="Action being attempted")
     resource: str = Field(..., description="Resource being accessed")
-    context: dict = Field(default_factory=dict, description="Additional context")
+    context: dict[str, Any] = Field(default_factory=dict, description="Additional context")
 
 
 class PolicyEvaluateResponse(BaseModel):

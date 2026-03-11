@@ -178,7 +178,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         allowed, rl_headers = await check_rate_limit(identifier, endpoint_type)
 
         if not allowed:
-            response = JSONResponse(
+            response: Response = JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={
                     "type": "https://agentauth.dev/problems/rate-limit-exceeded",
@@ -308,7 +308,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
     ):
         """
