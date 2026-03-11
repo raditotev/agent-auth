@@ -1,0 +1,22 @@
+{
+  "id": "6.2",
+  "phase": "Phase 6 - Logging & Observability",
+  "title": "Request Logging Middleware",
+  "description": "Add a RequestLoggingMiddleware class to src/agentauth/api/middleware.py and wire it into the FastAPI middleware stack in main.py. On each request, log: method, path, status_code, duration_ms, client_ip, request_id, agent_id (if authenticated), and user_agent. Generate request_id from the X-Request-ID header or auto-generate a UUID4 if absent. Bind request_id to structlog context so all downstream log entries include it. Set X-Request-ID on the response header. Implement 404 noise filtering: if status is 404 and the path did not match any registered FastAPI route, log at DEBUG level; if it matched a route but the resource wasn't found, log at WARNING. Skip logging entirely for /health and /ready endpoints to avoid liveness probe noise.",
+  "validation": [
+    "RequestLoggingMiddleware class exists in src/agentauth/api/middleware.py",
+    "Middleware is registered in main.py middleware stack",
+    "Logs include method, path, status_code, duration_ms, client_ip, request_id, agent_id, user_agent",
+    "request_id sourced from X-Request-ID header or auto-generated UUID4",
+    "request_id bound to structlog context for all downstream logs",
+    "X-Request-ID response header is set on every response",
+    "404 on unregistered routes logged at DEBUG (not WARNING/ERROR)",
+    "404 on registered routes (resource not found) logged at WARNING",
+    "5xx errors logged at ERROR level",
+    "/health and /ready requests are not logged",
+    "Tests verify 404 noise filtering logic",
+    "Tests verify request_id propagation"
+  ],
+  "completed": false,
+  "dependencies": ["6.1"]
+}

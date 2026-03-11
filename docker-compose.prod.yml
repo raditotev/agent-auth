@@ -123,7 +123,47 @@ services:
         condition: service_healthy
     restart: always
 
+  # ── Loki (log aggregation) ────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    restart: unless-stopped
+    # Port 3100 is internal only — not exposed to host
+
+  # ── Promtail (log shipper) ────────────────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:3
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # ── Grafana (dashboards) ──────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11
+    ports:
+      - "127.0.0.1:3000:3000"   # loopback only
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - loki
+    restart: unless-stopped
+
 # ── Named volumes (persistent across restarts and deployments) ────────────────
 volumes:
   agentauth-pgdata:
   agentauth-redisdata:
+  loki-data:
+  grafana-data:

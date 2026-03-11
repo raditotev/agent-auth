@@ -1,0 +1,19 @@
+{
+  "id": "6.1",
+  "phase": "Phase 6 - Logging & Observability",
+  "title": "Structlog Configuration",
+  "description": "Configure structlog with a proper processor pipeline. Create src/agentauth/core/logging.py with structlog.configure() using: add_log_level, TimeStamper (ISO 8601 UTC), StackInfoRenderer, ExceptionRenderer, JSONRenderer. Add context processors for service_name, environment, and hostname. Integrate with stdlib logging so uvicorn and SQLAlchemy logs also pass through structlog. Wire the setup into the FastAPI lifespan in main.py so it runs on startup. Ensure Celery workers use the same configuration.",
+  "validation": [
+    "src/agentauth/core/logging.py exists with structlog.configure() call",
+    "JSON renderer produces machine-parseable output",
+    "ISO 8601 UTC timestamps on every log entry",
+    "Every log entry includes service_name, environment, hostname fields",
+    "Exception/stack info is formatted cleanly, not raw tracebacks",
+    "stdlib logging (uvicorn, sqlalchemy) routed through structlog",
+    "Logging setup is called during FastAPI lifespan startup in main.py",
+    "Celery workers use the same structlog configuration",
+    "Existing structlog.get_logger() calls throughout codebase continue to work"
+  ],
+  "completed": false,
+  "dependencies": []
+}

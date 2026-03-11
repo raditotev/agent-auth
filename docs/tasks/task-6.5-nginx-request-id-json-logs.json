@@ -1,0 +1,16 @@
+{
+  "id": "6.5",
+  "phase": "Phase 6 - Logging & Observability",
+  "title": "Nginx Request ID Forwarding & JSON Logs",
+  "description": "Update nginx/agentauth.conf to support request ID correlation and structured logging. Use the $request_id variable to generate a unique ID if the client does not provide an X-Request-ID header, or pass through the client-provided value. Add X-Request-ID to the proxy_set_header directives so the FastAPI app receives it. Configure a JSON access log format that Promtail can parse, including fields: timestamp, method, path, status, request_time, upstream_response_time, request_id, remote_addr, http_user_agent.",
+  "validation": [
+    "nginx/agentauth.conf uses $request_id variable",
+    "X-Request-ID header forwarded to upstream via proxy_set_header",
+    "X-Request-ID returned to client in response headers",
+    "JSON log format defined with all required fields (timestamp, method, path, status, request_time, upstream_response_time, request_id, remote_addr, http_user_agent)",
+    "Access log uses the JSON format",
+    "Promtail can parse the nginx JSON log output"
+  ],
+  "completed": false,
+  "dependencies": []
+}

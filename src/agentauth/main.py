@@ -11,11 +11,13 @@ from agentauth.api.middleware import (
     AuthenticationMiddleware,
     AuthorizationMiddleware,
     RateLimitMiddleware,
+    RequestLoggingMiddleware,
 )
 from agentauth.api.v1 import api_router
 from agentauth.api.v1.wellknown import router as wellknown_router
 from agentauth.config import settings
 from agentauth.core.database import close_db, get_session_maker, init_db
+from agentauth.core.logging import setup_logging
 from agentauth.core.redis import get_redis_client
 
 logger = structlog.get_logger()
@@ -24,6 +26,7 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifecycle (startup and shutdown)."""
+    setup_logging()
     logger.info("AgentAuth starting up")
 
     # Validate configuration — refuse to start in production with insecure defaults
@@ -64,10 +67,12 @@ def create_app() -> FastAPI:
     )
 
     # Add middleware (LIFO order: last added runs first)
-    # Execution order: AuthenticationMiddleware → AuthorizationMiddleware → RateLimitMiddleware
+    # Execution order: RequestLoggingMiddleware → AuthenticationMiddleware → AuthorizationMiddleware → RateLimitMiddleware
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(AuthorizationMiddleware)
     app.add_middleware(AuthenticationMiddleware)
+    # RequestLoggingMiddleware is outermost — wraps the full request lifecycle
+    app.add_middleware(RequestLoggingMiddleware)
 
     # Include API v1 routes
     app.include_router(api_router, prefix=settings.api_v1_prefix)

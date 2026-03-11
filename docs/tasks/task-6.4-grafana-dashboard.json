@@ -1,0 +1,21 @@
+{
+  "id": "6.4",
+  "phase": "Phase 6 - Logging & Observability",
+  "title": "Pre-built Grafana Dashboard",
+  "description": "Create a pre-built Grafana dashboard JSON file at monitoring/grafana/dashboards/agentauth.json. The dashboard should provide operational visibility into AgentAuth with the following panels: request rate over time grouped by status code, 4xx and 5xx error rates, response time distribution (P50/P95/P99 latency), authentication failure count, top agents by request count, rate limit hits (429 responses) over time, and request breakdown by endpoint path. Include template variables for time range and environment filter. All panels should use LogQL queries against the Loki datasource.",
+  "validation": [
+    "monitoring/grafana/dashboards/agentauth.json exists and is valid JSON",
+    "Dashboard includes request rate panel grouped by status code",
+    "Dashboard includes 4xx and 5xx error rate panels",
+    "Dashboard includes P50/P95/P99 latency panels",
+    "Dashboard includes authentication failure panel",
+    "Dashboard includes top agents by request count panel",
+    "Dashboard includes rate limit hits (429) panel",
+    "Dashboard includes endpoint breakdown panel",
+    "Template variables for time range and environment filter are defined",
+    "All panels use LogQL queries targeting the Loki datasource",
+    "Dashboard auto-loads in Grafana via provisioning configuration from task 6.3"
+  ],
+  "completed": false,
+  "dependencies": ["6.3"]
+}

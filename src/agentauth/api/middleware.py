@@ -1,12 +1,16 @@
 """FastAPI middleware for authentication and authorization."""
 
+import time
+import uuid
 from typing import Any, Awaitable, Callable
 
 import structlog
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.datastructures import MutableHeaders
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from agentauth.core.database import get_session_maker
 from agentauth.core.exceptions import AuthenticationError
@@ -59,6 +63,88 @@ def _is_exempt_path(path: str) -> bool:
     if path in _EXEMPT_PATHS:
         return True
     return any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES)
+
+
+class RequestLoggingMiddleware:
+    """Pure ASGI middleware for request/response logging with request_id propagation.
+
+    - Skips /health and /ready endpoints entirely.
+    - Generates or propagates X-Request-ID and binds it to structlog context.
+    - Logs each request after response with method, path, status_code, duration_ms,
+      client_ip, request_id, user_agent, and agent_id (when authenticated).
+    - Applies log-level rules: 5xx→ERROR, 404-unregistered→DEBUG,
+      404-registered→WARNING, other 4xx→WARNING, 2xx/3xx→INFO.
+    """
+
+    _SKIP_PATHS: frozenset[str] = frozenset({"/health", "/ready"})
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
+        path = request.url.path
+
+        if path in self._SKIP_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+
+        start_time = time.monotonic()
+        status_code = 500
+
+        async def send_wrapper(message: Any) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                headers = MutableHeaders(scope=message)
+                headers.append("X-Request-ID", request_id)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            duration_ms = round((time.monotonic() - start_time) * 1000, 2)
+            agent_id = getattr(request.state, "agent_id", None)
+
+            log_level = _request_log_level(status_code, scope)
+
+            log_fields: dict[str, Any] = {
+                "method": request.method,
+                "path": path,
+                "status_code": status_code,
+                "duration_ms": duration_ms,
+                "client_ip": request.client.host if request.client else None,
+                "request_id": request_id,
+                "user_agent": request.headers.get("user-agent"),
+            }
+            if agent_id is not None:
+                log_fields["agent_id"] = str(agent_id)
+
+            getattr(logger, log_level)("http_request", **log_fields)
+            structlog.contextvars.clear_contextvars()
+
+
+def _request_log_level(status_code: int, scope: Scope) -> str:
+    """Determine the structlog level for a completed HTTP request."""
+    if status_code >= 500:
+        return "error"
+    if status_code == 404:
+        # If an endpoint was matched, the handler itself returned 404
+        # (resource not found) → WARNING.  If no endpoint matched at all
+        # the path is unregistered noise → DEBUG.
+        return "warning" if scope.get("endpoint") is not None else "debug"
+    if status_code >= 400:
+        return "warning"
+    return "info"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

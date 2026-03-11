@@ -1,0 +1,20 @@
+{
+  "id": "6.6",
+  "phase": "Phase 6 - Logging & Observability",
+  "title": "Update Deployment Docs & README",
+  "description": "Update docs/deployment.md with a new Monitoring & Logging section covering: Loki, Promtail, and Grafana services overview; how to access Grafana (port 3000); log querying with LogQL examples (filter by level, agent_id, request_id, path, status code); retention configuration; and a summary of the pre-built dashboard panels. Update README.md with an Observability section mentioning: structured logging with structlog and JSON output, request correlation IDs via X-Request-ID, Loki + Grafana for log aggregation and querying in production, and the pre-built operational dashboard.",
+  "validation": [
+    "docs/deployment.md contains a Monitoring & Logging section",
+    "Deployment docs explain how to access Grafana on port 3000",
+    "Deployment docs include at least 3 LogQL query examples",
+    "Deployment docs describe log retention configuration",
+    "Deployment docs summarize the pre-built dashboard panels",
+    "README.md contains an Observability or Logging section",
+    "README mentions structlog with JSON output",
+    "README mentions request correlation IDs (X-Request-ID)",
+    "README mentions Loki + Grafana for production log aggregation",
+    "README mentions the pre-built Grafana dashboard"
+  ],
+  "completed": false,
+  "dependencies": ["6.1", "6.2", "6.3", "6.4", "6.5"]
+}

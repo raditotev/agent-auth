@@ -8,8 +8,18 @@ Usage — start the beat scheduler for periodic tasks:
 """
 
 from celery import Celery
+from celery.signals import worker_process_init
 
 from agentauth.config import settings
+
+
+@worker_process_init.connect
+def init_worker_logging(**kwargs: object) -> None:  # noqa: ARG001
+    """Set up structlog in each Celery worker process."""
+    from agentauth.core.logging import setup_logging
+
+    setup_logging()
+
 
 celery_app = Celery(
     "agentauth",

@@ -1,0 +1,22 @@
+{
+  "id": "6.3",
+  "phase": "Phase 6 - Logging & Observability",
+  "title": "Loki + Grafana + Promtail Infrastructure",
+  "description": "Add Loki, Promtail, and Grafana services to docker-compose.prod.yml for production log aggregation. Loki (grafana/loki:3) stores logs with filesystem backend and 30-day retention, exposed only internally on port 3100. Promtail (grafana/promtail:3) scrapes Docker container logs via /var/lib/docker/containers, extracts labels (service name, environment), and parses JSON log lines to extract the log level. Grafana (grafana/grafana:11) provides the dashboard UI on port 3000 (localhost only). Create config files: monitoring/loki-config.yml, monitoring/promtail-config.yml. Auto-provision the Loki datasource in Grafana via monitoring/grafana/provisioning/datasources/loki.yml and dashboard loading via monitoring/grafana/provisioning/dashboards/dashboards.yml. Add named volumes for Loki and Grafana data persistence.",
+  "validation": [
+    "Loki service added to docker-compose.prod.yml with grafana/loki:3 image",
+    "Promtail service added to docker-compose.prod.yml with grafana/promtail:3 image",
+    "Grafana service added to docker-compose.prod.yml with grafana/grafana:11 image",
+    "Loki port 3100 not exposed externally (internal network only)",
+    "Grafana port 3000 bound to 127.0.0.1 only",
+    "monitoring/loki-config.yml exists with filesystem storage and 30-day retention",
+    "monitoring/promtail-config.yml exists and scrapes Docker container logs",
+    "Promtail pipeline parses JSON and extracts log level labels",
+    "Grafana Loki datasource auto-provisioned on startup",
+    "Grafana dashboard provider configured to load from provisioned directory",
+    "Named volumes for loki-data and grafana-data exist",
+    "All monitoring services have restart policies and health checks where applicable"
+  ],
+  "completed": false,
+  "dependencies": []
+}
