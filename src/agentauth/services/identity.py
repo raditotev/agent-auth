@@ -210,9 +210,7 @@ class IdentityService:
     async def get_agent_children(self, agent_id: UUID) -> list[Agent]:
         """Get all direct children of an agent."""
         stmt = (
-            select(Agent)
-            .where(Agent.parent_agent_id == agent_id)
-            .order_by(Agent.created_at.desc())
+            select(Agent).where(Agent.parent_agent_id == agent_id).order_by(Agent.created_at.desc())
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -224,7 +222,14 @@ class IdentityService:
             return None
 
         # Update only provided fields from the allowed set
-        _updatable_fields = {"name", "description", "homepage_url", "public_key", "max_child_depth", "agent_metadata"}
+        _updatable_fields = {
+            "name",
+            "description",
+            "homepage_url",
+            "public_key",
+            "max_child_depth",
+            "agent_metadata",
+        }
         update_data = data.model_dump(exclude_unset=True, by_alias=False)
         for key, value in update_data.items():
             if key not in _updatable_fields:
@@ -268,10 +273,6 @@ class IdentityService:
 
     async def get_agent_with_credentials(self, agent_id: UUID) -> Agent | None:
         """Get agent with credentials eagerly loaded."""
-        stmt = (
-            select(Agent)
-            .where(Agent.id == agent_id)
-            .options(selectinload(Agent.credentials))
-        )
+        stmt = select(Agent).where(Agent.id == agent_id).options(selectinload(Agent.credentials))
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()

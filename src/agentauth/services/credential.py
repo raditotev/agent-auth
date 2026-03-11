@@ -136,9 +136,7 @@ class CredentialService:
         Returns:
             List of matching Credential objects
         """
-        result = await self.session.execute(
-            select(Credential).where(Credential.prefix == prefix)
-        )
+        result = await self.session.execute(select(Credential).where(Credential.prefix == prefix))
         return list(result.scalars().all())
 
     async def list_credentials(

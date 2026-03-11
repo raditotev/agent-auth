@@ -34,7 +34,10 @@ async def create_scope(
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"error": "conflict", "error_description": f"Scope '{payload.name}' already exists"},
+            detail={
+                "error": "conflict",
+                "error_description": f"Scope '{payload.name}' already exists",
+            },
         ) from None
     return ScopeResponse.model_validate(scope)
 

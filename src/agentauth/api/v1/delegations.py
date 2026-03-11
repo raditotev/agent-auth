@@ -33,7 +33,10 @@ async def create_delegation(
     if agent is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "unauthorized", "error_description": "Authentication required to create delegations"},
+            detail={
+                "error": "unauthorized",
+                "error_description": "Authentication required to create delegations",
+            },
         )
     delegator_id = agent.id
 
@@ -77,7 +80,10 @@ async def list_delegations(
     if caller is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "unauthorized", "error_description": "Authentication required to list delegations"},
+            detail={
+                "error": "unauthorized",
+                "error_description": "Authentication required to list delegations",
+            },
         )
 
     query = select(Delegation).order_by(Delegation.created_at.desc())

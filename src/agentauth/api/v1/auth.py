@@ -685,9 +685,7 @@ async def _handle_token_exchange(
     claims = validation.claims
 
     # Load the agent from the subject token
-    result = await session.execute(
-        select(Agent).where(Agent.id == UUID(claims.sub))
-    )
+    result = await session.execute(select(Agent).where(Agent.id == UUID(claims.sub)))
     agent = result.scalar_one_or_none()
     if agent is None or not agent.is_active():
         raise HTTPException(

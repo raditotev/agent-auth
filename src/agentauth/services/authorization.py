@@ -127,9 +127,7 @@ class AuthorizationService:
             )
             SELECT id FROM ancestors
         """)
-        ancestor_result = await self.session.execute(
-            ancestor_sql, {"agent_id": agent_id}
-        )
+        ancestor_result = await self.session.execute(ancestor_sql, {"agent_id": agent_id})
         ancestor_ids = [row[0] for row in ancestor_result.fetchall()]
 
         if not ancestor_ids:
@@ -235,6 +233,7 @@ class AuthorizationService:
     def _context_hash(context: dict) -> str:
         """Generate a short hash of the context for cache key inclusion."""
         import hashlib
+
         ctx_str = str(sorted(context.items())) if context else ""
         return hashlib.md5(ctx_str.encode()).hexdigest()[:8]
 
@@ -248,6 +247,7 @@ class AuthorizationService:
         """Try to retrieve a cached authorization decision from Redis."""
         try:
             from agentauth.core.redis import get_redis_client
+
             redis_client = get_redis_client()
             ctx_hash = self._context_hash(context) if context else "none"
             cache_key = f"authz:{agent_id}:{action}:{resource}:{ctx_hash}"
@@ -270,6 +270,7 @@ class AuthorizationService:
         """Cache the authorization decision in Redis."""
         try:
             from agentauth.core.redis import get_redis_client
+
             redis_client = get_redis_client()
             ctx_hash = self._context_hash(context) if context else "none"
             cache_key = f"authz:{agent_id}:{action}:{resource}:{ctx_hash}"

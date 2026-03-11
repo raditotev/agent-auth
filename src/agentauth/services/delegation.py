@@ -57,39 +57,33 @@ class DelegationService:
         from agentauth.models.agent import Agent
 
         # Load delegator
-        result = await self.session.execute(
-            select(Agent).where(Agent.id == delegator_agent_id)
-        )
+        result = await self.session.execute(select(Agent).where(Agent.id == delegator_agent_id))
         delegator = result.scalar_one_or_none()
         if delegator is None or not delegator.is_active():
             raise AuthenticationError("Delegator agent not found or inactive")
 
         # Load delegate
-        result = await self.session.execute(
-            select(Agent).where(Agent.id == delegate_agent_id)
-        )
+        result = await self.session.execute(select(Agent).where(Agent.id == delegate_agent_id))
         delegate = result.scalar_one_or_none()
         if delegate is None or not delegate.is_active():
             raise AuthenticationError("Delegate agent not found or inactive")
 
         # Compute delegator's effective scopes and chain depth
-        effective_scopes, chain_depth = await self.get_effective_scopes_and_depth(delegator_agent_id)
+        effective_scopes, chain_depth = await self.get_effective_scopes_and_depth(
+            delegator_agent_id
+        )
 
         # Validate scope attenuation (supports wildcard patterns like 'files.*')
         if effective_scopes is not None:
             effective_set = set(effective_scopes)
             escalated = {s for s in scopes if not _scope_is_delegatable(s, effective_set)}
             if escalated:
-                raise ValueError(
-                    f"Scope escalation: delegator does not hold scopes {escalated}"
-                )
+                raise ValueError(f"Scope escalation: delegator does not hold scopes {escalated}")
 
         # Validate chain depth
         new_chain_depth = chain_depth + 1
         if new_chain_depth > max_chain_depth:
-            raise ValueError(
-                f"Chain depth {new_chain_depth} exceeds maximum {max_chain_depth}"
-            )
+            raise ValueError(f"Chain depth {new_chain_depth} exceeds maximum {max_chain_depth}")
 
         delegation = Delegation(
             delegator_agent_id=delegator_agent_id,
@@ -114,9 +108,7 @@ class DelegationService:
         )
         return delegation
 
-    async def get_effective_scopes_and_depth(
-        self, agent_id: UUID
-    ) -> tuple[list[str] | None, int]:
+    async def get_effective_scopes_and_depth(self, agent_id: UUID) -> tuple[list[str] | None, int]:
         """
         Compute an agent's effective scopes and current chain depth.
 
@@ -148,9 +140,7 @@ class DelegationService:
         max_depth = max(d.chain_depth for d in active)
         return sorted(effective), max_depth
 
-    async def get_delegation_chain(
-        self, delegation_id: UUID
-    ) -> list[Delegation]:
+    async def get_delegation_chain(self, delegation_id: UUID) -> list[Delegation]:
         """
         Traverse the delegation chain upward from the given delegation.
 
@@ -164,6 +154,7 @@ class DelegationService:
         # --- cache read ---
         try:
             from agentauth.core.redis import get_redis_client
+
             redis_client = get_redis_client()
             cached_raw = await redis_client.get(cache_key)
             if cached_raw is not None:
@@ -225,9 +216,7 @@ class DelegationService:
 
         return chain
 
-    async def revoke_delegation(
-        self, delegation_id: UUID, cascade: bool = True
-    ) -> int:
+    async def revoke_delegation(self, delegation_id: UUID, cascade: bool = True) -> int:
         """
         Revoke a delegation and optionally all downstream delegations.
 
@@ -266,6 +255,7 @@ class DelegationService:
         """Remove the cached delegation chain for the given delegation ID."""
         try:
             from agentauth.core.redis import get_redis_client
+
             redis_client = get_redis_client()
             await redis_client.delete(f"{_CHAIN_CACHE_PREFIX}{delegation_id}")
         except Exception as exc:

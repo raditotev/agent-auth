@@ -36,23 +36,25 @@ _TOKEN_PATHS = {"/api/v1/auth/token", "/api/v1/auth/token/introspect", "/api/v1/
 # Paths that require no authentication or authorization.
 # Shared by both AuthenticationMiddleware and AuthorizationMiddleware to keep
 # the two lists in sync.
-_EXEMPT_PATHS: frozenset[str] = frozenset({
-    "/health",
-    "/ready",
-    "/docs",
-    "/redoc",
-    "/openapi.json",
-    "/api/v1/agents/bootstrap",   # Root agent self-registration
-    "/api/v1/agents/quickstart",  # Compound register+credential+token shortcut
-    "/api/v1/auth/jwks",          # Public JWKS for token verification
-    "/api/v1/auth/token",         # Token exchange — clients authenticate here
-    "/api/v1/auth/token/introspect",  # RFC 7662
-    "/api/v1/auth/token/revoke",      # RFC 7009
-    "/.well-known/agent-configuration",  # Discovery endpoint
-    # Admin endpoints use X-Admin-Key (platform operators only), not agent auth
-    "/api/v1/stats",
-    "/api/v1/audit/events",
-})
+_EXEMPT_PATHS: frozenset[str] = frozenset(
+    {
+        "/health",
+        "/ready",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/api/v1/agents/bootstrap",  # Root agent self-registration
+        "/api/v1/agents/quickstart",  # Compound register+credential+token shortcut
+        "/api/v1/auth/jwks",  # Public JWKS for token verification
+        "/api/v1/auth/token",  # Token exchange — clients authenticate here
+        "/api/v1/auth/token/introspect",  # RFC 7662
+        "/api/v1/auth/token/revoke",  # RFC 7009
+        "/.well-known/agent-configuration",  # Discovery endpoint
+        # Admin endpoints use X-Admin-Key (platform operators only), not agent auth
+        "/api/v1/stats",
+        "/api/v1/audit/events",
+    }
+)
 
 # Path prefixes that are always exempt (e.g. interactive docs sub-paths)
 _EXEMPT_PREFIXES: tuple[str, ...] = ("/docs", "/redoc", "/openapi")
@@ -165,7 +167,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Choose identifier: authenticated agent ID or fallback to client IP
         agent = getattr(request.state, "agent", None)
-        identifier = f"agent:{agent.id}" if agent else f"ip:{request.client.host if request.client else 'unknown'}"
+        identifier = (
+            f"agent:{agent.id}"
+            if agent
+            else f"ip:{request.client.host if request.client else 'unknown'}"
+        )
 
         endpoint_type = "token" if request.url.path in _TOKEN_PATHS else "api"
 
@@ -244,6 +250,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         session_maker = get_session_maker()
         async with session_maker() as session:
             from agentauth.services.authorization import AuthorizationService
+
             auth_service = AuthorizationService(session)
             result = await auth_service.evaluate(
                 agent_id=agent.id,
@@ -272,7 +279,9 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
                     "status": 403,
                     "detail": result.reason,
                     "instance": resource,
-                    "policy_id": str(result.matching_policy_id) if result.matching_policy_id else None,
+                    "policy_id": str(result.matching_policy_id)
+                    if result.matching_policy_id
+                    else None,
                     "policy_name": result.matching_policy_name,
                 },
                 headers={"Content-Type": "application/problem+json"},
@@ -283,6 +292,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Authorization-Decision"] = decision
         return response
+
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     """
@@ -324,7 +334,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         bearer_token: str | None = None
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
-            bearer_token = auth_header[len("Bearer "):]
+            bearer_token = auth_header[len("Bearer ") :]
 
         if not api_key and not bearer_token:
             logger.warning(
@@ -460,6 +470,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
             # Load agent by sub claim (agent UUID)
             from uuid import UUID as _UUID
+
             try:
                 agent_id = _UUID(result.claims.sub)
             except ValueError:

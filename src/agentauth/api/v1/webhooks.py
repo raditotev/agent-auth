@@ -103,7 +103,9 @@ async def list_subscriptions(
     session: DbSession,
 ) -> list[WebhookSubscriptionResponse]:
     """List all webhook subscriptions. The signing secret is never included in list responses."""
-    result = await session.execute(select(WebhookSubscription).order_by(WebhookSubscription.created_at.desc()))
+    result = await session.execute(
+        select(WebhookSubscription).order_by(WebhookSubscription.created_at.desc())
+    )
     subs = list(result.scalars().all())
     # Never expose the encrypted secret in list responses
     responses = [WebhookSubscriptionResponse.model_validate(s) for s in subs]

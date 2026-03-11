@@ -94,9 +94,7 @@ class CredentialListResponse(BaseModel):
     """Schema for credential list response."""
 
     data: list[CredentialResponse]
-    meta: dict[str, Any] = Field(
-        default_factory=lambda: {"total": 0, "page": 1, "page_size": 50}
-    )
+    meta: dict[str, Any] = Field(default_factory=lambda: {"total": 0, "page": 1, "page_size": 50})
 
 
 class CredentialDetailResponse(BaseModel):

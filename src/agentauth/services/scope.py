@@ -54,9 +54,7 @@ class ScopeService:
     async def seed_default_scopes(self) -> None:
         """Seed the database with default scopes if not already present."""
         for name, description, category in DEFAULT_SCOPES:
-            existing = await self.session.execute(
-                select(Scope).where(Scope.name == name)
-            )
+            existing = await self.session.execute(select(Scope).where(Scope.name == name))
             if existing.scalar_one_or_none() is None:
                 scope = Scope(
                     name=name,

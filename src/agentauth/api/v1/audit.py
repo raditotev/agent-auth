@@ -30,7 +30,9 @@ async def list_audit_events(
     actor_id: Annotated[UUID | None, Query(description="Filter by actor agent ID")] = None,
     target_id: Annotated[UUID | None, Query(description="Filter by target resource ID")] = None,
     outcome: Annotated[EventOutcome | None, Query(description="Filter by outcome")] = None,
-    from_date: Annotated[datetime | None, Query(description="Start of date range (ISO 8601)")] = None,
+    from_date: Annotated[
+        datetime | None, Query(description="Start of date range (ISO 8601)")
+    ] = None,
     to_date: Annotated[datetime | None, Query(description="End of date range (ISO 8601)")] = None,
     after: Annotated[UUID | None, Query(description="Cursor: return events after this ID")] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="Page size")] = 50,

@@ -78,9 +78,7 @@ class AgentListResponse(BaseModel):
     """Schema for agent list response."""
 
     data: list[AgentResponse]
-    meta: dict[str, Any] = Field(
-        default_factory=lambda: {"total": 0, "page": 1, "page_size": 50}
-    )
+    meta: dict[str, Any] = Field(default_factory=lambda: {"total": 0, "page": 1, "page_size": 50})
 
 
 class AgentDetailResponse(BaseModel):

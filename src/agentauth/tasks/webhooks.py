@@ -50,9 +50,7 @@ async def deliver_webhook(
 
     async with session_maker() as session:
         result = await session.execute(
-            select(WebhookSubscription).where(
-                WebhookSubscription.id == UUID(subscription_id)
-            )
+            select(WebhookSubscription).where(WebhookSubscription.id == UUID(subscription_id))
         )
         subscription = result.scalar_one_or_none()
         if subscription is None or not subscription.enabled:
@@ -68,6 +66,7 @@ async def deliver_webhook(
         payload_bytes = json.dumps(payload_with_meta, sort_keys=True).encode()
         from agentauth.config import settings
         from agentauth.core.security import decrypt_secret
+
         raw_secret = decrypt_secret(subscription.secret, settings.secret_key)
         signature = _sign_payload(raw_secret, payload_bytes)
 
@@ -131,7 +130,7 @@ async def deliver_webhook(
 
                 if attempt < max_attempts:
                     # Exponential backoff with jitter to avoid thundering herd
-                    wait = 2 ** attempt + random.uniform(0, 1)
+                    wait = 2**attempt + random.uniform(0, 1)
                     await asyncio.sleep(wait)
 
     logger.error(
@@ -158,16 +157,11 @@ async def dispatch_event(event_type: str, payload: dict[str, Any]) -> None:
     session_maker = get_session_maker()
     async with session_maker() as session:
         result = await session.execute(
-            select(WebhookSubscription).where(
-                WebhookSubscription.enabled.is_(True)
-            )
+            select(WebhookSubscription).where(WebhookSubscription.enabled.is_(True))
         )
         subscriptions = [s for s in result.scalars().all() if event_type in s.events]
 
     # Dispatch all deliveries concurrently
-    tasks = [
-        deliver_webhook(str(sub.id), event_type, payload)
-        for sub in subscriptions
-    ]
+    tasks = [deliver_webhook(str(sub.id), event_type, payload) for sub in subscriptions]
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)

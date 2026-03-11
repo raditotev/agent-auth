@@ -107,7 +107,9 @@ class TokenService:
             "agent_type": agent.agent_type.value,
             "trust_level": agent.trust_level.value,
             "parent_agent_id": str(agent.parent_agent_id) if agent.parent_agent_id else None,
-            "delegation_chain": [str(uid) for uid in delegation_chain] if delegation_chain else None,
+            "delegation_chain": [str(uid) for uid in delegation_chain]
+            if delegation_chain
+            else None,
             "token_type": token_type,
         }
 
@@ -144,12 +146,15 @@ class TokenService:
 
             # Store the token pair relationship in Redis for cascading revocation
             from agentauth.core.redis import get_redis_client
+
             redis_client = get_redis_client()
             refresh_expires_in_seconds = int((refresh_expires_at - now).total_seconds())
 
             # Map access JTI -> refresh JTI and vice versa
             await redis_client.set(f"token_pair:access:{jti}", refresh_jti, ex=expires_in_seconds)
-            await redis_client.set(f"token_pair:refresh:{refresh_jti}", jti, ex=refresh_expires_in_seconds)
+            await redis_client.set(
+                f"token_pair:refresh:{refresh_jti}", jti, ex=refresh_expires_in_seconds
+            )
 
         logger.info(
             "Token minted successfully",
@@ -536,12 +541,20 @@ class TokenService:
                     # This is an access token, find and revoke its refresh token
                     paired_jti = await redis_client.get(f"token_pair:access:{jti}")
                     if paired_jti:
-                        logger.info("Cascading revocation: revoking paired refresh token", access_jti=jti, refresh_jti=paired_jti)
+                        logger.info(
+                            "Cascading revocation: revoking paired refresh token",
+                            access_jti=jti,
+                            refresh_jti=paired_jti,
+                        )
                 elif token_type == "refresh":
                     # This is a refresh token, find and revoke its access token
                     paired_jti = await redis_client.get(f"token_pair:refresh:{jti}")
                     if paired_jti:
-                        logger.info("Cascading revocation: revoking paired access token", refresh_jti=jti, access_jti=paired_jti)
+                        logger.info(
+                            "Cascading revocation: revoking paired access token",
+                            refresh_jti=jti,
+                            access_jti=paired_jti,
+                        )
 
                 # Revoke the paired token if it exists
                 if paired_jti:
@@ -552,7 +565,7 @@ class TokenService:
                         # Use the maximum of access and refresh token lifetimes
                         max_ttl = max(
                             settings.access_token_expire_minutes * 60,
-                            settings.refresh_token_expire_days * 24 * 60 * 60
+                            settings.refresh_token_expire_days * 24 * 60 * 60,
                         )
                         await redis_client.set(f"revoked:{paired_jti}", "1", ex=max_ttl)
                         logger.info("Paired token revoked", paired_jti=paired_jti)
@@ -563,7 +576,11 @@ class TokenService:
                     if paired_cache_key:
                         await redis_client.delete(paired_cache_key)
                         await redis_client.delete(f"jti_to_cache:{paired_jti}")
-                        logger.debug("Invalidated cache for paired token", paired_jti=paired_jti, cache_key=paired_cache_key)
+                        logger.debug(
+                            "Invalidated cache for paired token",
+                            paired_jti=paired_jti,
+                            cache_key=paired_cache_key,
+                        )
 
                     # Clean up token pair mappings
                     if token_type == "access":
@@ -641,7 +658,9 @@ class TokenService:
                 if not already_revoked:
                     max_ttl = settings.access_token_expire_minutes * 60
                     await redis_client.set(f"revoked:{access_token_jti}", "1", ex=max_ttl)
-                    logger.info("Revoked access token in compromised family", access_jti=access_token_jti)
+                    logger.info(
+                        "Revoked access token in compromised family", access_jti=access_token_jti
+                    )
 
             raise TokenError(
                 "Refresh token reuse detected — entire token family has been revoked",
@@ -649,9 +668,7 @@ class TokenService:
             )
 
         # Step 3: Full signature and expiry validation
-        validation_result = await self.validate_token(
-            refresh_token, expected_token_type="refresh"
-        )
+        validation_result = await self.validate_token(refresh_token, expected_token_type="refresh")
         if not validation_result.valid or validation_result.claims is None:
             raise TokenError(
                 f"Refresh token validation failed: {validation_result.error}",
@@ -661,9 +678,7 @@ class TokenService:
         claims = validation_result.claims
 
         # Step 4: Load and verify agent
-        result = await self.session.execute(
-            select(Agent).where(Agent.id == UUID(claims.sub))
-        )
+        result = await self.session.execute(select(Agent).where(Agent.id == UUID(claims.sub)))
         agent = result.scalar_one_or_none()
 
         if agent is None:

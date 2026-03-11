@@ -28,6 +28,7 @@ async def check_rate_limit(
     try:
         from agentauth.config import settings
         from agentauth.core.redis import get_redis_client
+
         redis_client = get_redis_client()
 
         if endpoint_type == "token":

@@ -36,15 +36,11 @@ async def get_stats(
     agents_result = await session.execute(select(func.count()).select_from(Agent))
     agents_count = agents_result.scalar_one() or 0
 
-    credentials_result = await session.execute(
-        select(func.count()).select_from(Credential)
-    )
+    credentials_result = await session.execute(select(func.count()).select_from(Credential))
     credentials_count = credentials_result.scalar_one() or 0
 
     tokens_result = await session.execute(
-        select(func.count())
-        .select_from(AuditEvent)
-        .where(AuditEvent.event_type == "token.issued")
+        select(func.count()).select_from(AuditEvent).where(AuditEvent.event_type == "token.issued")
     )
     tokens_issued_count = tokens_result.scalar_one() or 0
 

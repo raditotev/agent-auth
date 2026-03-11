@@ -171,7 +171,9 @@ class RedisClient:
             logger.warning("Failed to serialize JSON for Redis", key=key, error=str(e))
             return False
 
-    async def zremrangebyscore(self, key: str, min_score: str | float, max_score: str | float) -> int:
+    async def zremrangebyscore(
+        self, key: str, min_score: str | float, max_score: str | float
+    ) -> int:
         """Remove sorted set members with scores between min and max."""
         if self._client is None:
             await self.connect()

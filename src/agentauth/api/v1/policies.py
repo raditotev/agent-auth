@@ -19,7 +19,17 @@ from agentauth.schemas.policy import (
 
 # Fields that may be modified via the update endpoint.
 # Explicit allowlist prevents accidental privilege escalation if the schema grows.
-_UPDATABLE_FIELDS = {"name", "description", "effect", "subjects", "resources", "actions", "conditions", "priority", "enabled"}
+_UPDATABLE_FIELDS = {
+    "name",
+    "description",
+    "effect",
+    "subjects",
+    "resources",
+    "actions",
+    "conditions",
+    "priority",
+    "enabled",
+}
 
 logger = structlog.get_logger()
 
@@ -30,6 +40,7 @@ async def _invalidate_policy_cache() -> None:
     """Clear all cached authorization decisions after a policy change."""
     try:
         from agentauth.core.redis import get_redis_client
+
         redis_client = get_redis_client()
         await redis_client.delete_pattern("authz:*")
     except Exception as e:
@@ -98,7 +109,10 @@ async def list_policies(
     if caller is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "unauthorized", "error_description": "Authentication required to list policies"},
+            detail={
+                "error": "unauthorized",
+                "error_description": "Authentication required to list policies",
+            },
         )
 
     query = select(Policy).order_by(Policy.priority.desc(), Policy.created_at.desc())

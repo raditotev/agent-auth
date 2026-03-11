@@ -63,8 +63,7 @@ async def _bootstrap_rate_limit(request: Request) -> None:
                 "title": "Too Many Requests",
                 "status": 429,
                 "detail": (
-                    "Bootstrap rate limit exceeded. "
-                    "Please retry after the indicated period."
+                    "Bootstrap rate limit exceeded. Please retry after the indicated period."
                 ),
                 "instance": request.url.path,
             },
@@ -313,7 +312,9 @@ async def list_agents(
     request: Request,
     identity_service: Annotated[IdentityService, Depends(get_identity_service)],
     parent_agent_id: Annotated[UUID | None, Query(description="Filter by parent agent ID")] = None,
-    status_filter: Annotated[AgentStatus | None, Query(alias="status", description="Filter by agent status")] = None,
+    status_filter: Annotated[
+        AgentStatus | None, Query(alias="status", description="Filter by agent status")
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Maximum results to return")] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset for pagination")] = 0,
 ) -> AgentListResponse:

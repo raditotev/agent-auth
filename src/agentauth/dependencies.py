@@ -48,7 +48,7 @@ async def verify_agent(request: Request) -> AgentIdentity:
             headers={"WWW-Authenticate": 'Bearer realm="AgentAuth"'},
         )
 
-    token = auth_header[len("Bearer "):]
+    token = auth_header[len("Bearer ") :]
 
     # Use the token service to validate (already handles JWKS + revocation check)
     from agentauth.core.database import get_session_maker
@@ -78,7 +78,9 @@ async def verify_agent(request: Request) -> AgentIdentity:
         trust_level=claims.trust_level.value,
         scopes=claims.scopes,
         parent_agent_id=str(claims.parent_agent_id) if claims.parent_agent_id else None,
-        delegation_chain=[str(uid) for uid in claims.delegation_chain] if claims.delegation_chain else None,
+        delegation_chain=[str(uid) for uid in claims.delegation_chain]
+        if claims.delegation_chain
+        else None,
         jti=claims.jti,
         raw_claims=claims.model_dump(mode="json"),
     )
@@ -271,9 +273,7 @@ def require_trust_level(minimum_level: TrustLevel):
             TrustLevel.EPHEMERAL: 1,
         }
 
-        if trust_hierarchy.get(agent.trust_level, 0) < trust_hierarchy.get(
-            minimum_level, 0
-        ):
+        if trust_hierarchy.get(agent.trust_level, 0) < trust_hierarchy.get(minimum_level, 0):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={

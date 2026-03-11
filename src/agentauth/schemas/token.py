@@ -29,7 +29,9 @@ class TokenClaims(BaseModel):
         None, description="Chain of delegation from root agent"
     )
     token_type: str = Field(default="access", description="Type of token (access/refresh)")
-    access_token_jti: str | None = Field(None, description="JTI of paired access token (refresh tokens only)")
+    access_token_jti: str | None = Field(
+        None, description="JTI of paired access token (refresh tokens only)"
+    )
 
     model_config = {
         "json_schema_extra": {

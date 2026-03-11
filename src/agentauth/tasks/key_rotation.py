@@ -64,5 +64,3 @@ async def _rotate_keys_async() -> dict[str, list[str]]:
             await session.rollback()
             logger.error("Key rotation failed", error=str(e), exc_info=True)
             raise
-
-
