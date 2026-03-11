@@ -3,7 +3,8 @@
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import UUID as SAUUID, Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import UUID as SAUUID
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

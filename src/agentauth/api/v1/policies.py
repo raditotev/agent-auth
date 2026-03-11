@@ -16,6 +16,7 @@ from agentauth.schemas.policy import (
     PolicyResponse,
     PolicyUpdate,
 )
+
 # Fields that may be modified via the update endpoint.
 # Explicit allowlist prevents accidental privilege escalation if the schema grows.
 _UPDATABLE_FIELDS = {"name", "description", "effect", "subjects", "resources", "actions", "conditions", "priority", "enabled"}

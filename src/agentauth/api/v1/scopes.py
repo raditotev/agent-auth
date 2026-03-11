@@ -8,8 +8,8 @@ from agentauth.core.database import DbSession
 from agentauth.schemas.scope import (
     ScopeCreate,
     ScopeListResponse,
-    ScopeResponse,
     ScopeResolveResponse,
+    ScopeResponse,
 )
 from agentauth.services.scope import ScopeService
 
