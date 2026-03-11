@@ -351,7 +351,88 @@ docker image prune -f
 
 ---
 
-## 10. Troubleshooting
+## 10. Monitoring & Logging
+
+AgentAuth ships with a full observability stack (Loki + Promtail + Grafana) that is started alongside the application in `docker-compose.prod.yml`.
+
+### Services Overview
+
+| Service | Role | Accessibility |
+|---------|------|---------------|
+| **Loki** | Log storage and querying engine | Internal only (port 3100, not exposed publicly) |
+| **Promtail** | Log scraping agent — reads Docker container logs, parses JSON, extracts labels | Internal only |
+| **Grafana** | Dashboard UI for log exploration and pre-built panels | `http://localhost:3000` (or via SSH tunnel) |
+
+### Starting the Monitoring Stack
+
+The monitoring services start automatically with the production compose file:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Accessing Grafana
+
+- **URL:** `http://localhost:3000` (access remotely via SSH tunnel: `ssh -L 3000:localhost:3000 deploy@<your-server-ip>`)
+- **Login:** `admin` / `$GRAFANA_PASSWORD` (defaults to `admin` if `GRAFANA_PASSWORD` is not set in `.env`)
+
+Set a strong password in `.env`:
+
+```dotenv
+GRAFANA_PASSWORD=your-secure-grafana-password
+```
+
+After logging in, navigate to **Dashboards → AgentAuth Operations** to open the pre-built dashboard.
+
+### Log Querying with LogQL
+
+Grafana's Explore view accepts [LogQL](https://grafana.com/docs/loki/latest/query/) queries. Open **Explore**, select the **Loki** datasource, and try:
+
+```logql
+# All logs from the agentauth service in the last hour
+{service="agentauth"}
+
+# Only error-level logs
+{service="agentauth"} | json | level="error"
+
+# Requests to a specific API path
+{service="agentauth"} | json | path="/api/v1/agents"
+
+# Trace a single request end-to-end by request_id
+{service="agentauth"} | json | request_id="<uuid>"
+
+# Filter all activity for a specific agent
+{service="agentauth"} | json | agent_id="<agent-id>"
+```
+
+### Log Retention
+
+- **Default retention:** 30 days (720 h)
+- **Configuration file:** `monitoring/loki-config.yml` — `limits_config.retention_period`
+- **To change:** edit the value and restart Loki:
+
+```bash
+docker compose -f docker-compose.prod.yml restart loki
+```
+
+### Pre-built Dashboard Panels
+
+The **AgentAuth Operations** dashboard is auto-provisioned on Grafana startup and contains:
+
+| Panel | What it shows |
+|-------|--------------|
+| **Request Rate** | Request throughput grouped by HTTP status code |
+| **4xx Error Rate** | Client error rate trend over time |
+| **5xx Error Rate** | Server error rate trend over time |
+| **P50 / P95 / P99 Latency** | Response time percentiles |
+| **Authentication Failures** | Failed auth attempts over time |
+| **Rate Limit Hits** | 429 responses over time (sliding-window breaches) |
+| **Top Agents by Request Count** | Most active agents by request volume |
+| **Endpoint Breakdown** | Traffic distribution per API path |
+
+---
+
+## 11. Troubleshooting
 
 **Deploy fails health check**
 

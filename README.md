@@ -21,6 +21,35 @@ As AI agents proliferate, a critical infrastructure gap has emerged: agents have
 
 ---
 
+## Observability
+
+### Structured Logging
+
+All application logs use [structlog](https://www.structlog.org/) with JSON output. Every log entry includes `service_name`, `environment`, `hostname`, and `timestamp` (ISO 8601 UTC). Stdlib logging from uvicorn and SQLAlchemy is routed through the same pipeline, so all log output is consistently structured and machine-parseable.
+
+### Request Correlation
+
+Every HTTP request is assigned a `request_id` via the `X-Request-ID` header. If the client provides the header it is preserved; otherwise one is auto-generated. The ID propagates through all log entries for that request, enabling end-to-end tracing across middleware, services, and tasks.
+
+### Log Aggregation (Production)
+
+In production, logs are collected by [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/), stored in [Loki](https://grafana.com/oss/loki/), and visualized in [Grafana](https://grafana.com/). The full stack is included in `docker-compose.prod.yml` and starts automatically alongside the application.
+
+Grafana is available at `http://localhost:3000` (credentials: `admin` / `$GRAFANA_PASSWORD`).
+
+### Pre-built Dashboard
+
+A Grafana dashboard (**AgentAuth Operations**) is auto-provisioned on startup, providing out-of-the-box visibility into:
+
+- Request rates and error rates (4xx / 5xx)
+- Latency percentiles (P50 / P95 / P99)
+- Authentication failures and rate limit activity
+- Top agents by request count and per-endpoint traffic breakdown
+
+See [docs/deployment.md](docs/deployment.md#10-monitoring--logging) for LogQL query examples and retention configuration.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
