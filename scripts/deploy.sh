@@ -18,8 +18,8 @@
 #   - Nginx installed and managing /etc/nginx/conf.d/
 #   - Run from the repo root on the VPS (default: /home/admin/agentauth)
 #   - Nginx config files for each slot already present:
-#       /etc/nginx/conf.d/agentauth-blue.conf   (upstream 127.0.0.1:8001)
-#       /etc/nginx/conf.d/agentauth-green.conf  (upstream 127.0.0.1:8002)
+#       /etc/nginx/agentauth-slots/agentauth-blue.conf   (upstream 127.0.0.1:8001)
+#       /etc/nginx/agentauth-slots/agentauth-green.conf  (upstream 127.0.0.1:8002)
 #
 # =============================================================================
 set -euo pipefail
@@ -30,6 +30,7 @@ set -euo pipefail
 DEPLOY_PATH="${DEPLOY_PATH:-/home/admin/agentauth}"
 STATE_FILE="${DEPLOY_PATH}/.active-slot"
 NGINX_CONF_DIR="/etc/nginx/conf.d"
+NGINX_SLOTS_DIR="/etc/nginx/agentauth-slots"
 ACTIVE_SYMLINK="${NGINX_CONF_DIR}/agentauth-active.conf"
 COMPOSE_FILE="docker-compose.prod.yml"
 
@@ -107,7 +108,7 @@ wait_for_healthy() {
 
 swap_nginx() {
   local target="$1"
-  local target_conf="${NGINX_CONF_DIR}/agentauth-${target}.conf"
+  local target_conf="${NGINX_SLOTS_DIR}/agentauth-${target}.conf"
 
   if [[ ! -f "${target_conf}" ]]; then
     log_error "Nginx config not found: ${target_conf}"
@@ -115,8 +116,8 @@ swap_nginx() {
   fi
 
   log_info "Swapping nginx symlink → ${target_conf}"
-  ln -sf "${target_conf}" "${ACTIVE_SYMLINK}"
-  nginx -s reload
+  sudo ln -sf "${target_conf}" "${ACTIVE_SYMLINK}"
+  sudo nginx -s reload
   log_success "Nginx reloaded; traffic now routed to ${BOLD}${target}${RESET}"
 }
 

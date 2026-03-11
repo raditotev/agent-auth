@@ -118,8 +118,9 @@ sudo systemctl enable --now cloudflared
 
 ```bash
 sudo cp /home/admin/agentauth/nginx/agentauth.conf /etc/nginx/sites-available/agentauth
-sudo cp /home/admin/agentauth/nginx/blue.conf /etc/nginx/conf.d/agentauth-blue.conf
-sudo cp /home/admin/agentauth/nginx/green.conf /etc/nginx/conf.d/agentauth-green.conf
+sudo mkdir -p /etc/nginx/agentauth-slots
+sudo cp /home/admin/agentauth/nginx/blue.conf /etc/nginx/agentauth-slots/agentauth-blue.conf
+sudo cp /home/admin/agentauth/nginx/green.conf /etc/nginx/agentauth-slots/agentauth-green.conf
 ```
 
 **Enable the site:**
@@ -132,7 +133,7 @@ sudo rm -f /etc/nginx/sites-enabled/default
 **Set the initial active upstream to blue:**
 
 ```bash
-sudo ln -sf /etc/nginx/conf.d/agentauth-blue.conf /etc/nginx/conf.d/agentauth-active.conf
+sudo ln -sf /etc/nginx/agentauth-slots/agentauth-blue.conf /etc/nginx/conf.d/agentauth-active.conf
 ```
 
 **Test and reload Nginx:**
@@ -305,7 +306,7 @@ ls -la /etc/nginx/conf.d/agentauth-active.conf
 
 ```bash
 # Switch to green manually
-sudo ln -sf /etc/nginx/conf.d/agentauth-green.conf /etc/nginx/conf.d/agentauth-active.conf
+sudo ln -sf /etc/nginx/agentauth-slots/agentauth-green.conf /etc/nginx/conf.d/agentauth-active.conf
 sudo systemctl reload nginx
 echo "green" > /home/admin/agentauth/.active-slot
 ```
