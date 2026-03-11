@@ -1,9 +1,10 @@
 """Webhook subscription model (Task 4.5)."""
 
+from uuid import UUID
+
 from sqlalchemy import UUID as SAUUID, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from uuid import UUID
 
 from agentauth.core.database import BaseModel
 

@@ -26,6 +26,8 @@ from agentauth.services.token import TokenService
 
 logger = structlog.get_logger()
 
+_ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
@@ -635,8 +637,6 @@ async def _handle_token_exchange(
     Raises:
         HTTPException: 400 for missing/invalid params, 401 for invalid subject token
     """
-    ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
-
     if not subject_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -647,27 +647,27 @@ async def _handle_token_exchange(
         )
 
     # We only support access token subjects
-    if subject_token_type and subject_token_type != ACCESS_TOKEN_TYPE:
+    if subject_token_type and subject_token_type != _ACCESS_TOKEN_TYPE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "invalid_request",
                 "error_description": (
                     f"Unsupported subject_token_type '{subject_token_type}'. "
-                    f"Only '{ACCESS_TOKEN_TYPE}' is supported."
+                    f"Only '{_ACCESS_TOKEN_TYPE}' is supported."
                 ),
             },
         )
 
     # We only issue access tokens
-    if requested_token_type and requested_token_type != ACCESS_TOKEN_TYPE:
+    if requested_token_type and requested_token_type != _ACCESS_TOKEN_TYPE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "invalid_request",
                 "error_description": (
                     f"Unsupported requested_token_type '{requested_token_type}'. "
-                    f"Only '{ACCESS_TOKEN_TYPE}' is supported."
+                    f"Only '{_ACCESS_TOKEN_TYPE}' is supported."
                 ),
             },
         )

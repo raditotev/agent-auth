@@ -3,7 +3,6 @@
 import secrets
 from dataclasses import dataclass, field
 from typing import Annotated, Any
-from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 

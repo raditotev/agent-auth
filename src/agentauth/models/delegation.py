@@ -1,6 +1,6 @@
 """Delegation model — authorization chain between agents."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import UUID as SAUUID, DateTime, ForeignKey, Integer, String
@@ -69,10 +69,6 @@ class Delegation(BaseModel):
 
     def is_active(self) -> bool:
         """Return True if delegation is not revoked and not expired."""
-        from datetime import UTC
-
         if self.revoked_at is not None:
             return False
-        if self.expires_at is not None and datetime.now(UTC) > self.expires_at:
-            return False
-        return True
+        return self.expires_at is None or datetime.now(UTC) <= self.expires_at

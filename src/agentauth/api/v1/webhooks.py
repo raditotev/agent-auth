@@ -1,11 +1,10 @@
 """Webhook subscription management endpoints (Task 4.5)."""
 
 import secrets
-from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 from sqlalchemy import select
 

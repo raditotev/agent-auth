@@ -2,7 +2,6 @@
 
 import enum
 from datetime import UTC, datetime
-from uuid import UUID
 
 from sqlalchemy import TIMESTAMP, Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -10,14 +9,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from agentauth.core.database import BaseModel
 
 
-class KeyAlgorithm(str, enum.Enum):
+class KeyAlgorithm(enum.StrEnum):
     """Supported signing algorithms."""
 
     RS256 = "RS256"  # RSA with SHA-256
     ES256 = "ES256"  # ECDSA with P-256 and SHA-256
 
 
-class KeyStatus(str, enum.Enum):
+class KeyStatus(enum.StrEnum):
     """Status of signing key."""
 
     PENDING = "pending"  # Generated but not yet active

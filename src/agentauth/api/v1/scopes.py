@@ -1,9 +1,7 @@
 """Scope registry CRUD endpoints."""
 
-from typing import Annotated
-
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from agentauth.core.database import DbSession
@@ -32,7 +30,7 @@ async def create_scope(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": "conflict", "error_description": f"Scope '{payload.name}' already exists"},
-        )
+        ) from None
     return ScopeResponse.model_validate(scope)
 
 

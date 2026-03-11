@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.config import settings
-from agentauth.core.security import decrypt_secret, encrypt_secret
+from agentauth.core.security import encrypt_secret
 from agentauth.models.signing_key import KeyAlgorithm, KeyStatus, SigningKey
 
 logger = structlog.get_logger()
@@ -101,7 +101,7 @@ class CryptoService:
 
     async def generate_ecdsa_key_pair(
         self,
-        curve: ec.EllipticCurve = ec.SECP256R1(),
+        curve: ec.EllipticCurve | None = None,
         activation_date: datetime | None = None,
         expiration_days: int = 90,
     ) -> SigningKey:
@@ -116,6 +116,8 @@ class CryptoService:
         Returns:
             SigningKey instance (not yet committed to DB)
         """
+        if curve is None:
+            curve = ec.SECP256R1()
         logger.info("Generating ECDSA key pair", curve=curve.name)
 
         # Generate ECDSA private key

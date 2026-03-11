@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from agentauth.models.credential import Credential
 
 
-class AgentType(str, enum.Enum):
+class AgentType(enum.StrEnum):
     """Type of agent."""
 
     ORCHESTRATOR = "orchestrator"
@@ -30,7 +30,7 @@ class AgentType(str, enum.Enum):
     TOOL = "tool"
 
 
-class TrustLevel(str, enum.Enum):
+class TrustLevel(enum.StrEnum):
     """Trust level of agent."""
 
     ROOT = "root"
@@ -38,7 +38,7 @@ class TrustLevel(str, enum.Enum):
     EPHEMERAL = "ephemeral"
 
 
-class AgentStatus(str, enum.Enum):
+class AgentStatus(enum.StrEnum):
     """Status of agent."""
 
     ACTIVE = "active"

@@ -224,10 +224,10 @@ class IdentityService:
             return None
 
         # Update only provided fields from the allowed set
-        _UPDATABLE_FIELDS = {"name", "description", "homepage_url", "public_key", "max_child_depth", "agent_metadata"}
+        _updatable_fields = {"name", "description", "homepage_url", "public_key", "max_child_depth", "agent_metadata"}
         update_data = data.model_dump(exclude_unset=True, by_alias=False)
         for key, value in update_data.items():
-            if key not in _UPDATABLE_FIELDS:
+            if key not in _updatable_fields:
                 continue
             if key == "homepage_url" and value is not None:
                 value = str(value)

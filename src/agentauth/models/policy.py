@@ -1,6 +1,6 @@
 """Policy model for authorization rule management."""
 
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 from sqlalchemy import UUID as SAUUID, Boolean, ForeignKey, Integer, String, Text
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from agentauth.core.database import BaseModel
 
 
-class PolicyEffect(str, Enum):
+class PolicyEffect(StrEnum):
     """Whether this policy grants or denies access."""
 
     ALLOW = "allow"

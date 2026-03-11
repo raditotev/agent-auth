@@ -10,14 +10,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from agentauth.core.database import BaseModel
 
 
-class ActorType(str, enum.Enum):
+class ActorType(enum.StrEnum):
     """Type of actor initiating an event."""
 
     AGENT = "agent"
     SYSTEM = "system"
 
 
-class EventOutcome(str, enum.Enum):
+class EventOutcome(enum.StrEnum):
     """Outcome of an event."""
 
     SUCCESS = "success"

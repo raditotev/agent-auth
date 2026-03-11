@@ -1,6 +1,6 @@
 """Scope model for permission management."""
 
-from sqlalchemy import String, Text, Boolean, UniqueConstraint
+from sqlalchemy import Boolean, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from agentauth.core.database import BaseModel

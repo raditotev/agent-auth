@@ -7,7 +7,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl
 
 from agentauth.models.agent import AgentStatus, AgentType, TrustLevel
-from agentauth.schemas.credential import CredentialResponse
 from agentauth.schemas.token import TokenResponse
 
 

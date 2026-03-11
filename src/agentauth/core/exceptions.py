@@ -3,7 +3,7 @@
 from typing import Any
 
 
-class AgentAuthException(Exception):
+class AgentAuthError(Exception):
     """Base exception for all AgentAuth errors."""
 
     def __init__(self, message: str, detail: dict[str, Any] | None = None) -> None:
@@ -13,43 +13,43 @@ class AgentAuthException(Exception):
         self.detail = detail or {}
 
 
-class NotFoundError(AgentAuthException):
+class NotFoundError(AgentAuthError):
     """Resource not found."""
 
     pass
 
 
-class AlreadyExistsError(AgentAuthException):
+class AlreadyExistsError(AgentAuthError):
     """Resource already exists."""
 
     pass
 
 
-class ValidationError(AgentAuthException):
+class ValidationError(AgentAuthError):
     """Validation failed."""
 
     pass
 
 
-class AuthenticationError(AgentAuthException):
+class AuthenticationError(AgentAuthError):
     """Authentication failed."""
 
     pass
 
 
-class AuthorizationError(AgentAuthException):
+class AuthorizationError(AgentAuthError):
     """Authorization failed."""
 
     pass
 
 
-class CredentialError(AgentAuthException):
+class CredentialError(AgentAuthError):
     """Credential-related error."""
 
     pass
 
 
-class TokenError(AgentAuthException):
+class TokenError(AgentAuthError):
     """Token-related error."""
 
     pass

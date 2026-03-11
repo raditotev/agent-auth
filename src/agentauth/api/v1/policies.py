@@ -1,10 +1,9 @@
 """Policy CRUD endpoints."""
 
-from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select, text
 
 from agentauth.core.database import DbSession

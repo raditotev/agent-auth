@@ -1,8 +1,8 @@
 """Credential model - API keys and client secrets."""
 
 import enum
-from datetime import datetime
-from uuid import UUID
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     ARRAY,
@@ -17,8 +17,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from agentauth.core.database import BaseModel
 
+if TYPE_CHECKING:
+    from agentauth.models.agent import Agent
 
-class CredentialType(str, enum.Enum):
+
+class CredentialType(enum.StrEnum):
     """Type of credential."""
 
     API_KEY = "api_key"
@@ -110,15 +113,10 @@ class Credential(BaseModel):
 
     def is_valid(self) -> bool:
         """Check if credential is valid (not expired or revoked)."""
-        from datetime import UTC, datetime
-
         if self.revoked_at is not None:
             return False
 
-        if self.expires_at is not None and datetime.now(UTC) > self.expires_at:
-            return False
-
-        return True
+        return self.expires_at is None or datetime.now(UTC) <= self.expires_at
 
     def __repr__(self) -> str:
         """String representation."""

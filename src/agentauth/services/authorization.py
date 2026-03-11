@@ -176,10 +176,7 @@ class AuthorizationService:
             return True
 
         agent_ids = subjects.get("agent_ids", [])
-        if str(agent_id) in agent_ids:
-            return True
-
-        return False
+        return str(agent_id) in agent_ids
 
     @staticmethod
     def _matches_actions(policy_actions: list[str], action: str) -> bool:

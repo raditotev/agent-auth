@@ -1,10 +1,9 @@
 """Delegation management endpoints."""
 
-from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import or_, select
 
 from agentauth.core.database import DbSession

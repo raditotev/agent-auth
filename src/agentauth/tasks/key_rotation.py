@@ -1,7 +1,6 @@
 """Celery tasks for key rotation."""
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.core.database import get_session_maker
 from agentauth.services.crypto import CryptoService

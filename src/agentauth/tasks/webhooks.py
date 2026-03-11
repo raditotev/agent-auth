@@ -37,11 +37,13 @@ async def deliver_webhook(
     Retries up to MAX_ATTEMPTS times with exponential backoff.
     Records each attempt in the delivery log.
     """
+    from uuid import UUID
+
+    from sqlalchemy import select
+
     from agentauth.config import settings
     from agentauth.core.database import get_session_maker
     from agentauth.models.webhook import WebhookDeliveryLog, WebhookSubscription
-    from sqlalchemy import select
-    from uuid import UUID
 
     max_attempts = settings.webhook_max_delivery_attempts
     session_maker = get_session_maker()
@@ -148,9 +150,10 @@ async def dispatch_event(event_type: str, payload: dict[str, Any]) -> None:
     if event_type not in SUPPORTED_EVENTS:
         return
 
+    from sqlalchemy import select
+
     from agentauth.core.database import get_session_maker
     from agentauth.models.webhook import WebhookSubscription
-    from sqlalchemy import select
 
     session_maker = get_session_maker()
     async with session_maker() as session:
