@@ -51,7 +51,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -110,7 +110,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "sum by (status_code) (rate({service=\"agentauth\"} | json | status_code != \"\" [1m]))",
           "legendFormat": "{{status_code}}",
@@ -124,7 +124,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -184,7 +184,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "sum(rate({service=\"agentauth\"} | json | status_code =~ \"4..\" [1m]))",
           "legendFormat": "4xx rate",
@@ -198,7 +198,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -258,7 +258,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "sum(rate({service=\"agentauth\"} | json | status_code =~ \"5..\" [1m]))",
           "legendFormat": "5xx rate",
@@ -272,7 +272,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -331,7 +331,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "quantile_over_time(0.50, {service=\"agentauth\"} | json | unwrap duration_ms [1m])",
           "legendFormat": "P50",
@@ -340,7 +340,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "quantile_over_time(0.95, {service=\"agentauth\"} | json | unwrap duration_ms [1m])",
           "legendFormat": "P95",
@@ -349,7 +349,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "quantile_over_time(0.99, {service=\"agentauth\"} | json | unwrap duration_ms [1m])",
           "legendFormat": "P99",
@@ -363,7 +363,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -423,7 +423,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "sum(count_over_time({service=\"agentauth\"} | json | level=\"error\" | line_format \"{{.event}}\" |= \"authentication\" [1m]))",
           "legendFormat": "auth failures",
@@ -437,7 +437,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -497,7 +497,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "sum(rate({service=\"agentauth\"} | json | status_code=\"429\" [1m]))",
           "legendFormat": "429 rate",
@@ -511,7 +511,7 @@
       "type": "barchart",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -567,7 +567,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "topk(10, sum by (agent_id) (count_over_time({service=\"agentauth\"} | json | agent_id != \"\" [5m])))",
           "legendFormat": "{{agent_id}}",
@@ -582,7 +582,7 @@
       "type": "barchart",
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -638,7 +638,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "loki"
           },
           "expr": "topk(10, sum by (path) (count_over_time({service=\"agentauth\"} | json | path != \"\" [5m])))",
           "legendFormat": "{{path}}",
