@@ -36,9 +36,9 @@ class TokenClaims(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "iss": "https://agentauth.example.com",
+                "iss": "https://agentauth.radi.pro",
                 "sub": "550e8400-e29b-41d4-a716-446655440000",
-                "aud": "https://api.example.com",
+                "aud": "https://agentauth.radi.pro",
                 "exp": 1704067200,
                 "iat": 1704066300,
                 "jti": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",

@@ -56,7 +56,7 @@ class Settings(BaseSettings):
         description="Refresh token expiration time in days",
     )
     issuer_url: str = Field(
-        default="https://agentauth.example.com",
+        default="https://agentauth.radi.pro",
         description="Token issuer URL (used in JWT iss claim)",
     )
 

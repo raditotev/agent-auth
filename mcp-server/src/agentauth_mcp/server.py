@@ -41,7 +41,7 @@ def _get_client() -> AgentAuthHTTPClient:
             raise RuntimeError(
                 "AGENTAUTH_URL environment variable is required. "
                 "Set it to the base URL of your AgentAuth service "
-                "(e.g. http://localhost:8000)."
+                "(e.g. https://agentauth.radi.pro)."
             )
         _client = AgentAuthHTTPClient(base_url)
     return _client

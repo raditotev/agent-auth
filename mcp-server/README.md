@@ -30,7 +30,7 @@ uv pip install -e .
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `AGENTAUTH_URL` | Yes | Base URL of the AgentAuth service (e.g. `http://localhost:8000`) |
+| `AGENTAUTH_URL` | Yes | Base URL of the AgentAuth service (e.g. `https://agentauth.radi.pro`) |
 | `AGENTAUTH_API_KEY` | No | Default API key for the `authenticate` tool |
 
 ### Claude Desktop / Claude Code
@@ -44,7 +44,7 @@ Add to your MCP config (`claude_desktop_config.json` or `.claude/settings.json`)
       "command": "uv",
       "args": ["run", "--directory", "/path/to/agent-auth/mcp-server", "agentauth-mcp"],
       "env": {
-        "AGENTAUTH_URL": "http://localhost:8000",
+        "AGENTAUTH_URL": "https://agentauth.radi.pro",
         "AGENTAUTH_API_KEY": "agentauth_your_key_here"
       }
     }
@@ -55,7 +55,7 @@ Add to your MCP config (`claude_desktop_config.json` or `.claude/settings.json`)
 ### Direct execution
 
 ```bash
-AGENTAUTH_URL=http://localhost:8000 agentauth-mcp
+AGENTAUTH_URL=https://agentauth.radi.pro agentauth-mcp
 ```
 
 ## Usage flow
