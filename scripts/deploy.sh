@@ -163,9 +163,9 @@ cmd_deploy() {
   git pull origin main
   log_success "git pull done"
 
-  # 2. Build image
+  # 2. Build image (must specify profile so profile-gated services are included)
   log_info "Building Docker image…"
-  docker compose -f "${COMPOSE_FILE}" build
+  docker compose -f "${COMPOSE_FILE}" --profile "${target_slot}" build
   log_success "Image built"
 
   # 3. Run database migrations via the target slot service
