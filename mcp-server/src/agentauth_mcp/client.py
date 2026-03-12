@@ -1,5 +1,6 @@
 """HTTP client for communicating with the AgentAuth service."""
 
+from datetime import UTC
 from typing import Any
 
 import httpx
@@ -156,9 +157,7 @@ class AgentAuthHTTPClient:
             headers=self._auth_headers(token=auth),
         )
 
-    async def list_agents(
-        self, auth: str, limit: int = 50, offset: int = 0
-    ) -> dict[str, Any]:
+    async def list_agents(self, auth: str, limit: int = 50, offset: int = 0) -> dict[str, Any]:
         return await self._request(
             "GET",
             "/api/v1/agents",
@@ -193,10 +192,9 @@ class AgentAuthHTTPClient:
             "max_chain_depth": max_chain_depth,
         }
         if expires_in_hours is not None:
-            from datetime import datetime, timedelta, timezone
-            body["expires_at"] = (
-                datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
-            ).isoformat()
+            from datetime import datetime, timedelta
+
+            body["expires_at"] = (datetime.now(UTC) + timedelta(hours=expires_in_hours)).isoformat()
         return await self._request(
             "POST",
             "/api/v1/delegations",

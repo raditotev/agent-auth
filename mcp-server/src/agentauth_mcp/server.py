@@ -14,8 +14,8 @@ Configuration via environment variables:
 """
 
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -68,6 +68,7 @@ async def _lifespan(_: FastMCP) -> AsyncIterator[None]:
 
 mcp = FastMCP(
     "AgentAuth",
+    host="0.0.0.0",  # disable auto DNS-rebinding protection (behind reverse proxy)
     streamable_http_path="/",
     lifespan=_lifespan,
     instructions=(
