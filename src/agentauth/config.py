@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "AgentAuth"
-    environment: Literal["development", "staging", "production"] = "development"
+    environment: Literal["development", "staging", "production", "test"] = "development"
     debug: bool = Field(default=False, description="Enable debug mode")
 
     # Database
