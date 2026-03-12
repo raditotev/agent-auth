@@ -9,7 +9,7 @@ import structlog
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentauth.core.exceptions import AuthenticationError
+from agentauth.core.exceptions import AuthenticationError, ValidationError
 from agentauth.models.delegation import Delegation
 
 logger = structlog.get_logger()
@@ -55,6 +55,10 @@ class DelegationService:
         - Chain depth does not exceed the maximum
         - Both agents are active
         """
+        # Self-delegation check
+        if delegator_agent_id == delegate_agent_id:
+            raise ValidationError("An agent cannot delegate to itself")
+
         from agentauth.models.agent import Agent
 
         # Load delegator
@@ -68,6 +72,27 @@ class DelegationService:
         delegate = result.scalar_one_or_none()
         if delegate is None or not delegate.is_active():
             raise AuthenticationError("Delegate agent not found or inactive")
+
+        # Circular delegation chain detection: BFS forward from the delegate
+        # following existing delegation edges. If the delegator is reachable
+        # from the delegate, creating this delegation would form a cycle.
+        visited: set[UUID] = set()
+        queue = [delegate_agent_id]
+        while queue:
+            current_batch = [aid for aid in queue if aid not in visited]
+            if not current_batch:
+                break
+            visited.update(current_batch)
+            result = await self.session.execute(
+                select(Delegation.delegate_agent_id).where(
+                    Delegation.delegator_agent_id.in_(current_batch),
+                    Delegation.revoked_at.is_(None),
+                )
+            )
+            child_ids = {row[0] for row in result.fetchall()}
+            if delegator_agent_id in child_ids:
+                raise ValidationError("Circular delegation chain detected")
+            queue = list(child_ids - visited)
 
         # Compute delegator's effective scopes and chain depth
         effective_scopes, chain_depth = await self.get_effective_scopes_and_depth(

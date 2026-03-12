@@ -11,7 +11,9 @@ from sqlalchemy import select
 
 from agentauth.config import settings
 from agentauth.core.database import DbSession
+from agentauth.core.exceptions import ValidationError
 from agentauth.core.security import encrypt_secret
+from agentauth.core.url_utils import validate_webhook_url
 from agentauth.models.webhook import WebhookDeliveryLog, WebhookSubscription
 
 logger = structlog.get_logger()
@@ -71,6 +73,17 @@ async def create_subscription(
                 "supported_events": SUPPORTED_EVENTS,
             },
         )
+
+    try:
+        validate_webhook_url(str(payload.url))
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_webhook_url",
+                "error_description": exc.message,
+            },
+        ) from exc
 
     agent_id = getattr(request.state, "agent_id", None)
     if agent_id is None:

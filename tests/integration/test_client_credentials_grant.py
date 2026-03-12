@@ -401,7 +401,7 @@ async def test_client_credentials_credential_last_used_updated(
     root_agent: Agent,
     signing_key_rsa: SigningKey,
 ) -> None:
-    """Test that credential's last_used_at is updated on successful auth."""
+    """Test that credential usage is recorded in Redis for deferred DB flush."""
     # Setup: Create credential
     credential_service = CredentialService(db_session)
     credential, api_key = await credential_service.create_credential(
@@ -425,8 +425,13 @@ async def test_client_credentials_credential_last_used_updated(
 
     assert response.status_code == 200
 
-    # Refresh credential from DB
+    # last_used_at is now deferred to Redis + background flush,
+    # so it is NOT updated synchronously in the DB
     await db_session.refresh(credential)
 
-    # Verify last_used_at was updated
-    assert credential.last_used_at is not None
+    # Verify usage was recorded in Redis instead
+    from agentauth.core.redis import get_redis_client
+
+    redis_client = get_redis_client()
+    redis_value = await redis_client.get(f"cred_last_used:{credential.id}")
+    assert redis_value is not None

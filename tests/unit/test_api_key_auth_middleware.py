@@ -259,17 +259,14 @@ class TestAuthenticationMiddleware:
         assert problem["title"] == "Agent Inactive"
         assert "suspended" in problem["detail"]
 
-    async def test_last_used_at_updated_on_successful_auth(
+    async def test_last_used_at_recorded_in_redis_on_successful_auth(
         self,
         test_app: FastAPI,
         db_session: AsyncSession,
         valid_credential: tuple[Credential, str],
     ):
-        """Credential's last_used_at should be updated on successful authentication."""
+        """Credential usage should be recorded in Redis for deferred DB flush."""
         credential, raw_key = valid_credential
-
-        # Record initial last_used_at (should be None)
-        assert credential.last_used_at is None
 
         # Make authenticated request
         async with AsyncClient(
@@ -279,12 +276,16 @@ class TestAuthenticationMiddleware:
 
         assert response.status_code == 200
 
-        # Refresh credential from database
+        # last_used_at is now deferred to Redis + background flush,
+        # so it should NOT be updated synchronously in the DB
         await db_session.refresh(credential)
 
-        # Verify last_used_at was updated
-        assert credential.last_used_at is not None
-        assert (datetime.now(UTC) - credential.last_used_at).total_seconds() < 5
+        # Verify usage was recorded in Redis instead
+        from agentauth.core.redis import get_redis_client
+
+        redis_client = get_redis_client()
+        redis_value = await redis_client.get(f"cred_last_used:{credential.id}")
+        assert redis_value is not None
 
     async def test_multiple_requests_with_same_credential(
         self,
@@ -306,9 +307,9 @@ class TestAuthenticationMiddleware:
                 data = response.json()
                 assert data["agent_id"] == str(test_agent.id)
 
-        # Verify last_used_at was updated
+        # last_used_at is now deferred via Redis + background flush
+        # Verify all requests succeeded (the important part)
         await db_session.refresh(credential)
-        assert credential.last_used_at is not None
 
     async def test_bootstrap_endpoint_exempt_from_auth(self, test_app: FastAPI):
         """Bootstrap endpoint should be accessible without authentication."""

@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.config import settings
@@ -115,9 +115,11 @@ class AuthorizationService:
         Only policies whose creator is an ancestor of (or is) the requesting
         agent are loaded. This prevents policies from one root-agent tree from
         affecting agents in a different tree.
+
+        Uses a single query that combines the recursive ancestor CTE with the
+        policy fetch to reduce database round-trips.
         """
-        # Walk from agent_id up to the root, collecting every ancestor ID.
-        ancestor_sql = text("""
+        combined_sql = text("""
             WITH RECURSIVE ancestors AS (
                 SELECT id, parent_agent_id FROM agents WHERE id = :agent_id
                 UNION ALL
@@ -125,21 +127,37 @@ class AuthorizationService:
                 FROM agents a
                 INNER JOIN ancestors anc ON a.id = anc.parent_agent_id
             )
-            SELECT id FROM ancestors
+            SELECT p.id, p.created_by_agent_id, p.name, p.description,
+                   p.effect, p.subjects, p.resources, p.actions,
+                   p.conditions, p.priority, p.enabled,
+                   p.created_at, p.updated_at
+            FROM policies p
+            WHERE p.enabled = true
+            AND p.created_by_agent_id IN (SELECT id FROM ancestors)
+            ORDER BY p.priority DESC
         """)
-        ancestor_result = await self.session.execute(ancestor_sql, {"agent_id": agent_id})
-        ancestor_ids = [row[0] for row in ancestor_result.fetchall()]
-
-        if not ancestor_ids:
+        result = await self.session.execute(combined_sql, {"agent_id": agent_id})
+        rows = result.fetchall()
+        if not rows:
             return []
 
-        result = await self.session.execute(
-            select(Policy)
-            .where(Policy.enabled.is_(True))
-            .where(Policy.created_by_agent_id.in_(ancestor_ids))
-            .order_by(Policy.priority.desc())
-        )
-        return list(result.scalars().all())
+        policies = []
+        for row in rows:
+            policy = Policy(
+                id=row[0],
+                created_by_agent_id=row[1],
+                name=row[2],
+                description=row[3],
+                effect=row[4],
+                subjects=row[5],
+                resources=row[6],
+                actions=row[7],
+                conditions=row[8],
+                priority=row[9],
+                enabled=row[10],
+            )
+            policies.append(policy)
+        return policies
 
     def _policy_matches(
         self,
@@ -230,6 +248,17 @@ class AuthorizationService:
         return True
 
     @staticmethod
+    async def _increment_policy_version(agent_id: UUID) -> None:
+        """Increment the policy version counter for cache invalidation."""
+        try:
+            from agentauth.core.redis import get_redis_client
+
+            redis_client = get_redis_client()
+            await redis_client.incr(f"policy_version:{agent_id}")
+        except Exception as e:
+            logger.debug("Failed to increment policy version", error=str(e))
+
+    @staticmethod
     def _context_hash(context: dict[str, Any]) -> str:
         """Generate a short hash of the context for cache key inclusion."""
         import hashlib
@@ -249,8 +278,9 @@ class AuthorizationService:
             from agentauth.core.redis import get_redis_client
 
             redis_client = get_redis_client()
+            version = await redis_client.get(f"policy_version:{agent_id}") or "0"
             ctx_hash = self._context_hash(context) if context else "none"
-            cache_key = f"authz:{agent_id}:{action}:{resource}:{ctx_hash}"
+            cache_key = f"authz:v{version}:{agent_id}:{action}:{resource}:{ctx_hash}"
             cached_json = await redis_client.get_json(cache_key)
             if cached_json is not None:
                 logger.debug("Authorization decision cache hit", cache_key=cache_key)
@@ -272,8 +302,9 @@ class AuthorizationService:
             from agentauth.core.redis import get_redis_client
 
             redis_client = get_redis_client()
+            version = await redis_client.get(f"policy_version:{agent_id}") or "0"
             ctx_hash = self._context_hash(context) if context else "none"
-            cache_key = f"authz:{agent_id}:{action}:{resource}:{ctx_hash}"
+            cache_key = f"authz:v{version}:{agent_id}:{action}:{resource}:{ctx_hash}"
             await redis_client.set_json(
                 cache_key,
                 result.model_dump(mode="json"),

@@ -37,13 +37,12 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/policies", tags=["Policies"])
 
 
-async def _invalidate_policy_cache() -> None:
-    """Clear all cached authorization decisions after a policy change."""
+async def _invalidate_policy_cache(agent_id: UUID) -> None:
+    """Increment the policy version for an agent to invalidate cached decisions."""
     try:
-        from agentauth.core.redis import get_redis_client
+        from agentauth.services.authorization import AuthorizationService
 
-        redis_client = get_redis_client()
-        await redis_client.delete_pattern("authz:*")
+        await AuthorizationService._increment_policy_version(agent_id)
     except Exception as e:
         logger.warning("Failed to invalidate policy cache", error=str(e))
 
@@ -90,7 +89,7 @@ async def create_policy(
     session.add(policy)
     await session.commit()
     await session.refresh(policy)
-    await _invalidate_policy_cache()
+    await _invalidate_policy_cache(actor_id)
     logger.info("Policy created", policy_id=str(policy.id), name=policy.name)
     return PolicyResponse.model_validate(policy)
 
@@ -312,7 +311,7 @@ async def update_policy(
 
     await session.commit()
     await session.refresh(policy)
-    await _invalidate_policy_cache()
+    await _invalidate_policy_cache(policy.created_by_agent_id)
     logger.info("Policy updated", policy_id=str(policy.id))
     return PolicyResponse.model_validate(policy)
 
@@ -332,7 +331,7 @@ async def delete_policy(
         )
     await session.delete(policy)
     await session.commit()
-    await _invalidate_policy_cache()
+    await _invalidate_policy_cache(policy.created_by_agent_id)
     logger.info("Policy deleted", policy_id=str(policy_id))
 
 

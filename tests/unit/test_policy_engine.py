@@ -10,6 +10,25 @@ from agentauth.schemas.policy import PolicyEvaluateResponse
 from agentauth.services.authorization import AuthorizationService
 
 
+def _policy_to_row(policy: Policy) -> tuple:
+    """Convert a Policy object to a row tuple matching the combined CTE query columns."""
+    return (
+        policy.id,
+        policy.created_by_agent_id,
+        policy.name,
+        policy.description,
+        policy.effect,
+        policy.subjects,
+        policy.resources,
+        policy.actions,
+        policy.conditions,
+        policy.priority,
+        policy.enabled,
+        getattr(policy, "created_at", None),
+        getattr(policy, "updated_at", None),
+    )
+
+
 class TestPolicyMatchingHelpers:
     """Tests for static matching helpers."""
 
@@ -173,11 +192,12 @@ class TestDenyOverrides:
         )
 
         mock_session = AsyncMock()
-        mock_ancestor_result = MagicMock()
-        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [deny_policy, allow_policy]
-        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
+        mock_result.fetchall.return_value = [
+            _policy_to_row(deny_policy),
+            _policy_to_row(allow_policy),
+        ]
+        mock_session.execute = AsyncMock(return_value=mock_result)
 
         with (
             patch(
@@ -212,11 +232,9 @@ class TestDefaultDeny:
         agent_id = uuid4()
 
         mock_session = AsyncMock()
-        mock_ancestor_result = MagicMock()
-        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
+        mock_result.fetchall.return_value = []
+        mock_session.execute = AsyncMock(return_value=mock_result)
         with (
             patch(
                 "agentauth.services.authorization.AuthorizationService._get_cached_decision",
@@ -258,11 +276,9 @@ class TestDefaultDeny:
         agent_id = uuid4()  # Different from policy's agent_ids
 
         mock_session = AsyncMock()
-        mock_ancestor_result = MagicMock()
-        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [policy]
-        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
+        mock_result.fetchall.return_value = [_policy_to_row(policy)]
+        mock_session.execute = AsyncMock(return_value=mock_result)
         with (
             patch(
                 "agentauth.services.authorization.AuthorizationService._get_cached_decision",
@@ -306,11 +322,9 @@ class TestAllowWhenMatch:
             enabled=True,
         )
         mock_session = AsyncMock()
-        mock_ancestor_result = MagicMock()
-        mock_ancestor_result.fetchall.return_value = [(str(agent_id),)]
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [policy]
-        mock_session.execute = AsyncMock(side_effect=[mock_ancestor_result, mock_result])
+        mock_result.fetchall.return_value = [_policy_to_row(policy)]
+        mock_session.execute = AsyncMock(return_value=mock_result)
 
         with (
             patch(
@@ -360,7 +374,7 @@ class TestPolicyScoping:
             enabled=True,
         )
         # Policy from an unrelated tree — must NOT be visible
-        unrelated_policy = Policy(
+        _unrelated_policy = Policy(
             id=uuid4(),
             created_by_agent_id=unrelated_id,
             name="unrelated-deny",
@@ -375,15 +389,11 @@ class TestPolicyScoping:
 
         mock_session = AsyncMock()
 
-        # First execute call → recursive CTE returning [agent_id, ancestor_id]
-        ancestor_rows = MagicMock()
-        ancestor_rows.fetchall.return_value = [(str(agent_id),), (str(ancestor_id),)]
+        # Combined query returns only ancestor_policy (unrelated excluded by DB query)
+        combined_result = MagicMock()
+        combined_result.fetchall.return_value = [_policy_to_row(ancestor_policy)]
 
-        # Second execute call → policies query returning only ancestor_policy
-        policy_result = MagicMock()
-        policy_result.scalars.return_value.all.return_value = [ancestor_policy]
-
-        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+        mock_session.execute = AsyncMock(return_value=combined_result)
 
         with (
             patch(
@@ -414,11 +424,11 @@ class TestPolicyScoping:
 
         mock_session = AsyncMock()
 
-        # CTE returns empty — agent not found
-        empty_ancestor_rows = MagicMock()
-        empty_ancestor_rows.fetchall.return_value = []
+        # Combined query returns empty — agent not found or no policies
+        empty_result = MagicMock()
+        empty_result.fetchall.return_value = []
 
-        mock_session.execute = AsyncMock(return_value=empty_ancestor_rows)
+        mock_session.execute = AsyncMock(return_value=empty_result)
 
         with (
             patch(
@@ -462,7 +472,7 @@ class TestPolicyScopingViolations:
 
         # The sibling DENY policy explicitly names agent_a in subjects — it still
         # must be excluded because root_b is not in agent_a's ancestor chain.
-        sibling_deny = Policy(
+        sibling_deny = Policy(  # noqa: F841
             id=uuid4(),
             created_by_agent_id=agent_b,  # Different tree
             name="sibling-deny",
@@ -489,15 +499,11 @@ class TestPolicyScopingViolations:
 
         mock_session = AsyncMock()
 
-        # CTE returns only agent_a and root_a (agent_b is not an ancestor)
-        ancestor_rows = MagicMock()
-        ancestor_rows.fetchall.return_value = [(str(agent_a),), (str(root_a),)]
+        # Combined query returns only ancestor_allow (sibling_deny excluded by the CTE)
+        combined_result = MagicMock()
+        combined_result.fetchall.return_value = [_policy_to_row(ancestor_allow)]
 
-        # DB returns only ancestor_allow (sibling_deny excluded by the query's WHERE clause)
-        policy_result = MagicMock()
-        policy_result.scalars.return_value.all.return_value = [ancestor_allow]
-
-        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+        mock_session.execute = AsyncMock(return_value=combined_result)
 
         with (
             patch(
@@ -527,7 +533,7 @@ class TestPolicyScopingViolations:
         A root agent (no parent) only sees policies it created itself.
         """
         root_agent = uuid4()
-        other_root = uuid4()
+        other_root = uuid4()  # noqa: F841
 
         own_allow = Policy(
             id=uuid4(),
@@ -544,15 +550,11 @@ class TestPolicyScopingViolations:
 
         mock_session = AsyncMock()
 
-        # CTE returns only the root agent itself
-        ancestor_rows = MagicMock()
-        ancestor_rows.fetchall.return_value = [(str(root_agent),)]
+        # Combined query returns own_allow only (other_root's policies excluded)
+        combined_result = MagicMock()
+        combined_result.fetchall.return_value = [_policy_to_row(own_allow)]
 
-        # DB returns own_allow only (other_root's policies excluded)
-        policy_result = MagicMock()
-        policy_result.scalars.return_value.all.return_value = [own_allow]
-
-        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+        mock_session.execute = AsyncMock(return_value=combined_result)
 
         with (
             patch(
@@ -585,7 +587,7 @@ class TestPolicyScopingViolations:
         ancestor_id = uuid4()
 
         # Disabled ALLOW from own ancestor — must be excluded
-        disabled_allow = Policy(
+        disabled_allow = Policy(  # noqa: F841
             id=uuid4(),
             created_by_agent_id=ancestor_id,
             name="disabled-allow",
@@ -600,14 +602,11 @@ class TestPolicyScopingViolations:
 
         mock_session = AsyncMock()
 
-        ancestor_rows = MagicMock()
-        ancestor_rows.fetchall.return_value = [(str(agent_id),), (str(ancestor_id),)]
+        # Combined query excludes disabled policies (WHERE enabled IS TRUE) → empty result
+        combined_result = MagicMock()
+        combined_result.fetchall.return_value = []
 
-        # DB excludes disabled policies (WHERE enabled IS TRUE) → empty result
-        policy_result = MagicMock()
-        policy_result.scalars.return_value.all.return_value = []
-
-        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+        mock_session.execute = AsyncMock(return_value=combined_result)
 
         with (
             patch(
@@ -641,7 +640,7 @@ class TestPolicyScopingViolations:
         root = uuid4()
         parent = uuid4()
         agent = uuid4()
-        sibling_root = uuid4()
+        sibling_root = uuid4()  # noqa: F841
 
         ancestor_allow = Policy(
             id=uuid4(),
@@ -670,20 +669,15 @@ class TestPolicyScopingViolations:
 
         mock_session = AsyncMock()
 
-        # Full ancestor chain: agent → parent → root
-        ancestor_rows = MagicMock()
-        ancestor_rows.fetchall.return_value = [
-            (str(agent),),
-            (str(parent),),
-            (str(root),),
+        # Combined query returns both own-tree policies (sibling_root's excluded)
+        # parent_restrict has higher priority — evaluated first
+        combined_result = MagicMock()
+        combined_result.fetchall.return_value = [
+            _policy_to_row(parent_restrict),
+            _policy_to_row(ancestor_allow),
         ]
 
-        # Both own-tree policies returned (sibling_root's excluded by DB query)
-        policy_result = MagicMock()
-        # parent_restrict has higher priority — evaluated first
-        policy_result.scalars.return_value.all.return_value = [parent_restrict, ancestor_allow]
-
-        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+        mock_session.execute = AsyncMock(return_value=combined_result)
 
         with (
             patch(
@@ -717,7 +711,7 @@ class TestPolicyScopingViolations:
         unrelated_creator = uuid4()
 
         # This policy matches the agent by ID but comes from unrelated tree
-        unrelated_allow = Policy(
+        unrelated_allow = Policy(  # noqa: F841
             id=uuid4(),
             created_by_agent_id=unrelated_creator,
             name="unrelated-allow",
@@ -732,15 +726,11 @@ class TestPolicyScopingViolations:
 
         mock_session = AsyncMock()
 
-        # Ancestor CTE: only agent_id (no ancestors, no parent)
-        ancestor_rows = MagicMock()
-        ancestor_rows.fetchall.return_value = [(str(agent_id),)]
+        # Combined query excludes unrelated_allow → empty
+        combined_result = MagicMock()
+        combined_result.fetchall.return_value = []
 
-        # DB excludes unrelated_allow → empty
-        policy_result = MagicMock()
-        policy_result.scalars.return_value.all.return_value = []
-
-        mock_session.execute = AsyncMock(side_effect=[ancestor_rows, policy_result])
+        mock_session.execute = AsyncMock(return_value=combined_result)
 
         with (
             patch(
