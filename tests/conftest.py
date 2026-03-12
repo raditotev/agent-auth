@@ -33,7 +33,7 @@ TEST_DATABASE_URL = os.getenv(
 # Derive a plain asyncpg DSN pointing at the default DB (used to CREATE the test DB)
 _dsn_without_db = TEST_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://").rsplit("/", 1)[0]
 _TEST_DB_NAME = TEST_DATABASE_URL.rsplit("/", 1)[-1]
-_BASE_DSN = f"{_dsn_without_db}/agentauth"
+_BASE_DSN = f"{_dsn_without_db}/postgres"
 
 
 @pytest.fixture(scope="session", autouse=True)

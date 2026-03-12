@@ -68,6 +68,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql+asyncpg://agentauth:agentauth_test@localhost:5432/agentauth_test
+      TEST_DATABASE_URL: postgresql+asyncpg://agentauth:agentauth_test@localhost:5432/agentauth_test
       REDIS_URL: redis://localhost:6379
       SECRET_KEY: test-secret-key-for-ci-only
       ENVIRONMENT: test
