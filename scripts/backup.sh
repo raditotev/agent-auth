@@ -11,7 +11,7 @@
 #   ./scripts/backup.sh --dry-run  # show what would happen, no changes
 #
 # Environment variables (override via .env or shell):
-#   BACKUP_DIR      local directory to store backups (default: /opt/agentauth/backups)
+#   BACKUP_DIR      local directory to store backups (default: /home/admin/agentauth/backups)
 #   BACKUP_REMOTE   rclone remote path for offsite copy (e.g. r2:agentauth-backups)
 #                   leave empty to skip offsite sync
 #   POSTGRES_CONTAINER  docker container name for postgres (default: auto-detect)
@@ -21,7 +21,7 @@ set -euo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-BACKUP_DIR="${BACKUP_DIR:-/opt/agentauth/backups}"
+BACKUP_DIR="${BACKUP_DIR:-/home/admin/agentauth/backups}"
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
 
 DAILY_KEEP=7

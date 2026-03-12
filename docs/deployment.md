@@ -574,7 +574,7 @@ make prod-ps
 
 **Database connection errors**
 
-Verify the postgres container is healthy and that `DATABASE_URL` in `.env` matches `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`:
+Verify the postgres container is healthy. `DATABASE_URL` is injected automatically by `docker-compose.prod.yml` (not in `.env`) — confirm that `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in `.env` are correct:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps postgres

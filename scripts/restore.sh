@@ -8,7 +8,7 @@
 #   ./scripts/restore.sh <path-to-backup.dump>
 #
 # Example:
-#   ./scripts/restore.sh /opt/agentauth/backups/postgres/daily/agentauth_pg_2026-03-10_daily.dump
+#   ./scripts/restore.sh /home/admin/agentauth/backups/postgres/daily/agentauth_pg_2026-03-10_daily.dump
 #
 # The backup file must be a pg_dump --format=custom archive.
 
@@ -39,7 +39,7 @@ if [[ -z "$BACKUP_FILE" ]]; then
   echo "Usage: $0 <path-to-backup.dump>"
   echo ""
   echo "Available backups:"
-  BACKUP_DIR="${BACKUP_DIR:-/opt/agentauth/backups}"
+  BACKUP_DIR="${BACKUP_DIR:-/home/admin/agentauth/backups}"
   find "$BACKUP_DIR/postgres" -name "*.dump" -type f -printf "  %TY-%Tm-%Td %TH:%TM  %p\n" 2>/dev/null | sort || true
   exit 1
 fi
@@ -124,7 +124,7 @@ docker exec "$PG_CONTAINER" rm -f "$TEMP_CONTAINER_PATH"
 # ── Restart app slots ─────────────────────────────────────────────────────────
 
 if [[ -f "$COMPOSE_FILE" ]]; then
-  ACTIVE_SLOT_FILE="${ACTIVE_SLOT_FILE:-/opt/agentauth/.active-slot}"
+  ACTIVE_SLOT_FILE="${ACTIVE_SLOT_FILE:-/home/admin/agentauth/.active-slot}"
   ACTIVE_SLOT=""
   if [[ -f "$ACTIVE_SLOT_FILE" ]]; then
     ACTIVE_SLOT=$(cat "$ACTIVE_SLOT_FILE")
