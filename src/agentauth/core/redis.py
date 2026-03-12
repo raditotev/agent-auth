@@ -171,6 +171,25 @@ class RedisClient:
             logger.warning("Failed to serialize JSON for Redis", key=key, error=str(e))
             return False
 
+    async def incr(self, key: str) -> int:
+        """Increment the integer value of a key by one.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            The value after incrementing, or 0 on failure.
+        """
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+
+        try:
+            return int(await self._client.incr(key))
+        except Exception as e:
+            logger.warning("Redis INCR failed", key=key, error=str(e))
+            return 0
+
     async def zremrangebyscore(
         self, key: str, min_score: str | float, max_score: str | float
     ) -> int:
@@ -216,6 +235,31 @@ class RedisClient:
         except Exception as e:
             logger.warning("Redis EXPIRE failed", key=key, error=str(e))
             return False
+
+    async def eval_script(self, script: str, keys: list[str], args: list[str]) -> Any:
+        """Evaluate a Lua script on the Redis server."""
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        return await self._client.eval(script, len(keys), *keys, *args)
+
+    async def scan_keys(self, pattern: str) -> list[str]:
+        """Return all keys matching a glob pattern using SCAN.
+
+        Args:
+            pattern: Glob-style pattern (e.g. ``cred_last_used:*``).
+
+        Returns:
+            List of matching key strings.
+        """
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        try:
+            return [key async for key in self._client.scan_iter(pattern)]
+        except Exception as e:
+            logger.warning("Redis SCAN failed", pattern=pattern, error=str(e))
+            return []
 
     async def delete_pattern(self, pattern: str) -> int:
         """Delete all keys matching a glob pattern. Returns count of deleted keys.

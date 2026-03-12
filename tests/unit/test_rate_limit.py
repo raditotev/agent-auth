@@ -1,17 +1,21 @@
-"""Unit tests for sliding window rate limiter boundary conditions."""
+"""Unit tests for sliding window rate limiter (Lua-script based)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 
-def _make_redis(*, zcard: int = 0) -> AsyncMock:
-    """Create a mock Redis client with configurable current request count."""
+def _make_redis(*, allowed: bool = True, count: int = 0) -> AsyncMock:
+    """Create a mock Redis client that returns eval_script results.
+
+    The Lua script returns [allowed_flag, current_count, _unused].
+    When allowed, count reflects the post-add count (count + 1).
+    """
     redis = AsyncMock()
-    redis.zremrangebyscore = AsyncMock(return_value=0)
-    redis.zcard = AsyncMock(return_value=zcard)
-    redis.zadd = AsyncMock(return_value=1)
-    redis.expire = AsyncMock(return_value=True)
+    if allowed:
+        redis.eval_script = AsyncMock(return_value=[1, count + 1, 0])
+    else:
+        redis.eval_script = AsyncMock(return_value=[0, count, -1])
     return redis
 
 
@@ -31,7 +35,7 @@ class TestRateLimitAllowed:
         """First request (count=0) is always allowed."""
         from agentauth.core.rate_limit import check_rate_limit
 
-        redis = _make_redis(zcard=0)
+        redis = _make_redis(allowed=True, count=0)
         settings = _make_settings(api_limit=100)
 
         with (
@@ -41,7 +45,7 @@ class TestRateLimitAllowed:
             allowed, headers = await check_rate_limit("agent:test", "api")
 
         assert allowed is True
-        redis.zadd.assert_called_once()
+        redis.eval_script.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_request_at_limit_minus_one_is_allowed(self) -> None:
@@ -49,7 +53,7 @@ class TestRateLimitAllowed:
         from agentauth.core.rate_limit import check_rate_limit
 
         limit = 10
-        redis = _make_redis(zcard=limit - 1)  # 9 existing → count<limit
+        redis = _make_redis(allowed=True, count=limit - 1)
         settings = _make_settings(api_limit=limit)
 
         with (
@@ -70,7 +74,7 @@ class TestRateLimitRejected:
         from agentauth.core.rate_limit import check_rate_limit
 
         limit = 10
-        redis = _make_redis(zcard=limit)  # already at limit
+        redis = _make_redis(allowed=False, count=limit)
         settings = _make_settings(api_limit=limit)
 
         with (
@@ -80,7 +84,6 @@ class TestRateLimitRejected:
             allowed, headers = await check_rate_limit("agent:test", "api")
 
         assert allowed is False
-        redis.zadd.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_request_above_limit_is_rejected(self) -> None:
@@ -88,7 +91,7 @@ class TestRateLimitRejected:
         from agentauth.core.rate_limit import check_rate_limit
 
         limit = 10
-        redis = _make_redis(zcard=limit + 5)
+        redis = _make_redis(allowed=False, count=limit + 5)
         settings = _make_settings(api_limit=limit)
 
         with (
@@ -110,7 +113,8 @@ class TestRateLimitHeaders:
 
         limit = 50
         current = 10
-        redis = _make_redis(zcard=current)
+        # Lua returns count+1 for allowed requests
+        redis = _make_redis(allowed=True, count=current)
         settings = _make_settings(api_limit=limit)
 
         with (
@@ -120,7 +124,7 @@ class TestRateLimitHeaders:
             _, headers = await check_rate_limit("agent:test", "api")
 
         assert headers["X-RateLimit-Limit"] == str(limit)
-        # Remaining = limit - current - 1 (this request)
+        # Remaining = limit - (current + 1) because Lua returns post-add count
         assert headers["X-RateLimit-Remaining"] == str(limit - current - 1)
         assert "X-RateLimit-Reset" in headers
 
@@ -131,7 +135,7 @@ class TestRateLimitHeaders:
 
         limit = 10
         window = 60
-        redis = _make_redis(zcard=limit)
+        redis = _make_redis(allowed=False, count=limit)
         settings = _make_settings(api_limit=limit, window=window)
 
         with (
@@ -150,7 +154,8 @@ class TestRateLimitHeaders:
         from agentauth.core.rate_limit import check_rate_limit
 
         limit = 5
-        redis = _make_redis(zcard=limit - 1)
+        # count=4 → Lua returns [1, 5, 0] → remaining = max(0, 5-5) = 0
+        redis = _make_redis(allowed=True, count=limit - 1)
         settings = _make_settings(api_limit=limit)
 
         with (
@@ -168,7 +173,7 @@ class TestRateLimitHeaders:
         from agentauth.core.rate_limit import check_rate_limit
 
         limit = 5
-        redis = _make_redis(zcard=limit + 10)  # Way over
+        redis = _make_redis(allowed=False, count=limit + 10)
         settings = _make_settings(api_limit=limit)
 
         with (
@@ -191,8 +196,7 @@ class TestEndpointTypeLimits:
 
         token_limit = 5
         api_limit = 1000
-        # At count=5: should be rejected for token but allowed for api
-        redis = _make_redis(zcard=token_limit)
+        redis = _make_redis(allowed=False, count=token_limit)
         settings = _make_settings(api_limit=api_limit, token_limit=token_limit)
 
         with (
@@ -211,8 +215,7 @@ class TestEndpointTypeLimits:
 
         token_limit = 5
         api_limit = 1000
-        # At count=5: rejected for token, allowed for api
-        redis = _make_redis(zcard=5)
+        redis = _make_redis(allowed=True, count=5)
         settings = _make_settings(api_limit=api_limit, token_limit=token_limit)
 
         with (
@@ -229,7 +232,7 @@ class TestEndpointTypeLimits:
         """Different endpoint types produce different Redis keys."""
         from agentauth.core.rate_limit import check_rate_limit
 
-        redis = _make_redis(zcard=0)
+        redis = _make_redis(allowed=True, count=0)
         settings = _make_settings()
 
         with (
@@ -239,12 +242,11 @@ class TestEndpointTypeLimits:
             await check_rate_limit("agent:abc", "token")
             await check_rate_limit("agent:abc", "api")
 
-        # zremrangebyscore called twice with different keys
-        calls = redis.zremrangebyscore.call_args_list
+        calls = redis.eval_script.call_args_list
         assert len(calls) == 2
-        keys = {c[0][0] for c in calls}
-        assert "ratelimit:token:agent:abc" in keys
-        assert "ratelimit:api:agent:abc" in keys
+        keys_used = {call[1]["keys"][0] for call in calls}
+        assert "ratelimit:token:agent:abc" in keys_used
+        assert "ratelimit:api:agent:abc" in keys_used
 
 
 class TestRateLimitRedisFailure:
@@ -256,7 +258,7 @@ class TestRateLimitRedisFailure:
         from agentauth.core.rate_limit import check_rate_limit
 
         redis = AsyncMock()
-        redis.zremrangebyscore = AsyncMock(side_effect=ConnectionError("Redis down"))
+        redis.eval_script = AsyncMock(side_effect=ConnectionError("Redis down"))
 
         with (
             patch("agentauth.core.redis.get_redis_client", return_value=redis),
@@ -275,7 +277,7 @@ class TestRateLimitRedisFailure:
         from agentauth.core.rate_limit import check_rate_limit
 
         redis = AsyncMock()
-        redis.zremrangebyscore = AsyncMock(side_effect=Exception("unexpected"))
+        redis.eval_script = AsyncMock(side_effect=Exception("unexpected"))
 
         with (
             patch("agentauth.core.redis.get_redis_client", return_value=redis),
@@ -287,36 +289,77 @@ class TestRateLimitRedisFailure:
             assert headers[key] == "unknown"
 
 
-class TestRateLimitWindowExpiry:
-    """Old entries are removed from the window before counting."""
+class TestLuaScriptUsed:
+    """The Lua script is called instead of individual Redis commands."""
 
     @pytest.mark.asyncio
-    async def test_zremrangebyscore_called_to_clean_window(self) -> None:
-        """check_rate_limit cleans stale entries via zremrangebyscore."""
+    async def test_eval_script_called_instead_of_individual_commands(self) -> None:
+        """check_rate_limit uses a single eval_script call, not individual ops."""
+        from agentauth.core.rate_limit import RATE_LIMIT_LUA, check_rate_limit
+
+        redis = _make_redis(allowed=True, count=0)
+        settings = _make_settings()
+
+        with (
+            patch("agentauth.core.redis.get_redis_client", return_value=redis),
+            patch("agentauth.config.settings", settings),
+        ):
+            await check_rate_limit("agent:test", "api")
+
+        redis.eval_script.assert_called_once()
+        call_args = redis.eval_script.call_args
+        assert call_args[0][0] == RATE_LIMIT_LUA
+
+    @pytest.mark.asyncio
+    async def test_no_individual_redis_commands_called(self) -> None:
+        """Individual zremrangebyscore/zcard/zadd/expire are NOT called."""
         from agentauth.core.rate_limit import check_rate_limit
 
-        redis = _make_redis(zcard=0)
+        redis = _make_redis(allowed=True, count=0)
+        # Add mock methods that should NOT be called
+        redis.zremrangebyscore = AsyncMock()
+        redis.zcard = AsyncMock()
+        redis.zadd = AsyncMock()
+        redis.expire = AsyncMock()
+        settings = _make_settings()
+
+        with (
+            patch("agentauth.core.redis.get_redis_client", return_value=redis),
+            patch("agentauth.config.settings", settings),
+        ):
+            await check_rate_limit("agent:test", "api")
+
+        redis.zremrangebyscore.assert_not_called()
+        redis.zcard.assert_not_called()
+        redis.zadd.assert_not_called()
+        redis.expire.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_lua_script_receives_correct_key(self) -> None:
+        """The Lua script receives the correct Redis key."""
+        from agentauth.core.rate_limit import check_rate_limit
+
+        redis = _make_redis(allowed=True, count=0)
         settings = _make_settings(window=60)
 
         with (
             patch("agentauth.core.redis.get_redis_client", return_value=redis),
             patch("agentauth.config.settings", settings),
         ):
-            await check_rate_limit("agent:test", "api")
+            await check_rate_limit("agent:xyz", "api")
 
-        redis.zremrangebyscore.assert_called_once()
-        # The second arg should be "-inf" (remove everything before window_start)
-        call_args = redis.zremrangebyscore.call_args[0]
-        assert call_args[1] == "-inf"
+        call_kwargs = redis.eval_script.call_args[1]
+        assert call_kwargs["keys"] == ["ratelimit:api:agent:xyz"]
 
     @pytest.mark.asyncio
-    async def test_key_ttl_set_to_double_window(self) -> None:
-        """Redis key TTL is set to 2× the window for auto-expiry."""
+    async def test_lua_script_receives_correct_args(self) -> None:
+        """The Lua script args include limit and window TTL."""
         from agentauth.core.rate_limit import check_rate_limit
 
-        window = 60
-        redis = _make_redis(zcard=0)
-        settings = _make_settings(window=window)
+        limit = 42
+        window = 90
+        redis = _make_redis(allowed=True, count=0)
+        settings = _make_settings(api_limit=limit, window=window)
 
         with (
             patch("agentauth.core.redis.get_redis_client", return_value=redis),
@@ -324,6 +367,8 @@ class TestRateLimitWindowExpiry:
         ):
             await check_rate_limit("agent:test", "api")
 
-        redis.expire.assert_called_once()
-        _, ttl_arg = redis.expire.call_args[0]
-        assert ttl_arg == window * 2
+        call_kwargs = redis.eval_script.call_args[1]
+        args = call_kwargs["args"]
+        # args = [now_ts, window_start, limit, window_ttl, member]
+        assert args[2] == str(limit)
+        assert args[3] == str(window * 2)
