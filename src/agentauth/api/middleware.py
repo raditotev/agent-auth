@@ -57,7 +57,7 @@ _EXEMPT_PATHS: frozenset[str] = frozenset(
 )
 
 # Path prefixes that are always exempt (e.g. interactive docs sub-paths)
-_EXEMPT_PREFIXES: tuple[str, ...] = ("/docs", "/redoc", "/openapi")
+_EXEMPT_PREFIXES: tuple[str, ...] = ("/docs", "/redoc", "/openapi", "/mcp")
 
 
 def _is_exempt_path(path: str) -> bool:

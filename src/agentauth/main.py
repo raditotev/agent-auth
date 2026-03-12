@@ -80,6 +80,16 @@ def create_app() -> FastAPI:
     # Well-known discovery endpoint (at root, not under /api/v1)
     app.include_router(wellknown_router)
 
+    # Mount MCP server (Streamable HTTP) — endpoint at /mcp
+    try:
+        from agentauth_mcp.server import mcp as mcp_server
+
+        mcp_starlette = mcp_server.streamable_http_app()
+        app.mount("/mcp", mcp_starlette)
+        logger.info("MCP server mounted at /mcp")
+    except ImportError:
+        logger.warning("agentauth-mcp-server not installed, MCP endpoint disabled")
+
     # Health check endpoint
     @app.get("/health", tags=["health"])
     async def health() -> JSONResponse:

@@ -1,11 +1,12 @@
 {
   "info": {
     "name": "AgentAuth MCP Server",
-    "description": "Tests all HTTP endpoints exposed by the AgentAuth service that back the MCP server tools.\n\nUsage:\n1. Set the `base_url` variable to your AgentAuth instance (e.g. http://localhost:8000)\n2. Run `Quickstart` to register an agent and auto-populate `api_key`, `access_token`, `refresh_token`, `agent_id`\n3. All subsequent requests use those collection variables automatically",
+    "description": "Tests the AgentAuth MCP endpoint (Streamable HTTP at /mcp) and the REST API endpoints that back the MCP tools.\n\nUsage:\n1. Set the `base_url` variable to your AgentAuth instance (e.g. http://localhost:8000)\n2. Start with the **MCP Protocol** folder to test the /mcp endpoint directly via JSON-RPC 2.0\n3. Or use the **REST API** folders to test the underlying HTTP endpoints\n4. Run `Quickstart` (in either folder) to register an agent and auto-populate collection variables",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "mcp_session_id", "value": "", "type": "string" },
     { "key": "api_key", "value": "", "type": "string" },
     { "key": "access_token", "value": "", "type": "string" },
     { "key": "refresh_token", "value": "", "type": "string" },
@@ -15,7 +16,355 @@
   ],
   "item": [
     {
-      "name": "Discovery",
+      "name": "MCP Protocol",
+      "description": "Tests the MCP Streamable HTTP endpoint at /mcp using JSON-RPC 2.0.\n\nRun these in order:\n1. Initialize — starts a session\n2. List Tools — shows available MCP tools\n3. Call any tool (discover, quickstart, authenticate, etc.)\n\nThe Mcp-Session-Id header is auto-populated from the Initialize response.",
+      "item": [
+        {
+          "name": "1. Initialize Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "// Save session ID from response header",
+                  "const sessionId = pm.response.headers.get('Mcp-Session-Id');",
+                  "if (sessionId) {",
+                  "    pm.collectionVariables.set('mcp_session_id', sessionId);",
+                  "    pm.test('Has Mcp-Session-Id header', () => pm.expect(sessionId).to.be.a('string'));",
+                  "}",
+                  "",
+                  "// Handle SSE or JSON response",
+                  "const contentType = pm.response.headers.get('Content-Type') || '';",
+                  "if (contentType.includes('application/json')) {",
+                  "    const json = pm.response.json();",
+                  "    pm.test('Returns initialize result', () => {",
+                  "        pm.expect(json.result).to.have.property('serverInfo');",
+                  "        pm.expect(json.result).to.have.property('protocolVersion');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2025-03-26\",\n    \"capabilities\": {},\n    \"clientInfo\": {\n      \"name\": \"postman\",\n      \"version\": \"1.0.0\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Initializes an MCP session. The response includes server info, capabilities, and a session ID (Mcp-Session-Id header) that must be included in all subsequent requests."
+          }
+        },
+        {
+          "name": "2. Send Initialized Notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 202 or 204', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 202, 204]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"notifications/initialized\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Sends the initialized notification to complete the MCP handshake. This is a JSON-RPC notification (no id field, no response expected)."
+          }
+        },
+        {
+          "name": "3. List Tools",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const contentType = pm.response.headers.get('Content-Type') || '';",
+                  "if (contentType.includes('application/json')) {",
+                  "    const json = pm.response.json();",
+                  "    pm.test('Returns tools array', () => {",
+                  "        pm.expect(json.result).to.have.property('tools');",
+                  "        pm.expect(json.result.tools).to.be.an('array');",
+                  "        pm.expect(json.result.tools.length).to.be.greaterThan(0);",
+                  "    });",
+                  "    pm.test('Has discover tool', () => {",
+                  "        const names = json.result.tools.map(t => t.name);",
+                  "        pm.expect(names).to.include('discover');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 2,\n  \"method\": \"tools/list\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Lists all available MCP tools. Returns tool names, descriptions, and input schemas."
+          }
+        },
+        {
+          "name": "Call: discover",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 3,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"discover\",\n    \"arguments\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Calls the `discover` tool via MCP. Returns AgentAuth service metadata (issuer, grant types, scopes, endpoints)."
+          }
+        },
+        {
+          "name": "Call: quickstart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const contentType = pm.response.headers.get('Content-Type') || '';",
+                  "if (contentType.includes('application/json')) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.result && json.result.content) {",
+                  "        try {",
+                  "            const data = JSON.parse(json.result.content[0].text);",
+                  "            if (data.agent?.id)      pm.collectionVariables.set('agent_id', data.agent.id);",
+                  "            if (data.api_key)        pm.collectionVariables.set('api_key', data.api_key);",
+                  "            if (data.access_token)   pm.collectionVariables.set('access_token', data.access_token);",
+                  "            if (data.refresh_token)  pm.collectionVariables.set('refresh_token', data.refresh_token);",
+                  "        } catch(e) {}",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 4,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"quickstart\",\n    \"arguments\": {\n      \"name\": \"postman-mcp-agent\",\n      \"agent_type\": \"orchestrator\",\n      \"description\": \"Created via MCP protocol in Postman\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Calls the `quickstart` tool via MCP. Registers a new agent and returns credentials. Auto-populates agent_id, api_key, access_token, and refresh_token variables."
+          }
+        },
+        {
+          "name": "Call: authenticate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const contentType = pm.response.headers.get('Content-Type') || '';",
+                  "if (contentType.includes('application/json')) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.result && json.result.content) {",
+                  "        try {",
+                  "            const data = JSON.parse(json.result.content[0].text);",
+                  "            if (data.access_token)   pm.collectionVariables.set('access_token', data.access_token);",
+                  "            if (data.refresh_token)  pm.collectionVariables.set('refresh_token', data.refresh_token);",
+                  "        } catch(e) {}",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 5,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"authenticate\",\n    \"arguments\": {\n      \"api_key\": \"{{api_key}}\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Calls the `authenticate` tool via MCP. Exchanges an API key for an access token. Updates access_token and refresh_token variables."
+          }
+        },
+        {
+          "name": "Call: list_agents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 6,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"list_agents\",\n    \"arguments\": {\n      \"access_token\": \"{{access_token}}\",\n      \"limit\": 10\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Calls the `list_agents` tool via MCP. Lists registered agents using the access token from a previous authenticate or quickstart call."
+          }
+        },
+        {
+          "name": "Call: introspect_token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 7,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"introspect_token\",\n    \"arguments\": {\n      \"token\": \"{{access_token}}\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Calls the `introspect_token` tool via MCP. Checks whether a token is valid and returns its claims."
+          }
+        },
+        {
+          "name": "Terminate Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 204 or 405', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204, 405]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Mcp-Session-Id", "value": "{{mcp_session_id}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/mcp",
+              "host": ["{{base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Terminates the MCP session. After this, the Mcp-Session-Id is no longer valid and a new Initialize is required."
+          }
+        }
+      ]
+    },
+    {
+      "name": "REST: Discovery",
       "item": [
         {
           "name": "Discover Service Configuration",
@@ -48,7 +397,7 @@
       ]
     },
     {
-      "name": "Agent Lifecycle",
+      "name": "REST: Agent Lifecycle",
       "item": [
         {
           "name": "Quickstart (Register Agent)",
@@ -160,7 +509,7 @@
       ]
     },
     {
-      "name": "Authentication & Tokens",
+      "name": "REST: Authentication & Tokens",
       "item": [
         {
           "name": "Authenticate (client_credentials)",
@@ -306,7 +655,7 @@
       ]
     },
     {
-      "name": "Credentials (API Keys)",
+      "name": "REST: Credentials (API Keys)",
       "item": [
         {
           "name": "Create Credential",
@@ -415,7 +764,7 @@
       ]
     },
     {
-      "name": "Delegation",
+      "name": "REST: Delegation",
       "item": [
         {
           "name": "Create Delegation",
@@ -460,7 +809,7 @@
       ]
     },
     {
-      "name": "Authorization",
+      "name": "REST: Authorization",
       "item": [
         {
           "name": "Check Permission",

@@ -10,15 +10,17 @@ ENV UV_CACHE_DIR=/tmp/.cache/uv
 
 # Install dependencies first (layer caching)
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+COPY mcp-server/pyproject.toml mcp-server/
+RUN uv sync --frozen --no-dev --no-install-project --no-install-workspace
 
 # Copy application code
 COPY README.md ./
 COPY alembic.ini ./
 COPY migrations/ ./migrations/
 COPY src/ ./src/
+COPY mcp-server/src/ ./mcp-server/src/
 
-# Install the project itself
+# Install the project and workspace members
 RUN uv sync --frozen --no-dev
 
 # Run as non-root user

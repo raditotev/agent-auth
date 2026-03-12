@@ -4,9 +4,13 @@ Exposes AgentAuth identity, credential, token, delegation, and policy tools
 so that any MCP-compatible AI agent can authenticate and manage permissions
 without writing custom HTTP client code.
 
+The MCP endpoint is automatically mounted at /mcp when running as part of
+the main AgentAuth FastAPI application. For local development or air-gapped
+environments, the server can also run standalone via stdio transport.
+
 Configuration via environment variables:
-    AGENTAUTH_URL  — Base URL of the AgentAuth service (required)
-    AGENTAUTH_API_KEY — Default API key for authentication (optional)
+    AGENTAUTH_URL     — Base URL of the AgentAuth service (required)
+    AGENTAUTH_API_KEY — Default API key for the authenticate tool (optional)
 """
 
 import os
@@ -64,6 +68,7 @@ async def _lifespan(_: FastMCP) -> AsyncIterator[None]:
 
 mcp = FastMCP(
     "AgentAuth",
+    streamable_http_path="/",
     lifespan=_lifespan,
     instructions=(
         "This MCP server lets you interact with the AgentAuth identity and "

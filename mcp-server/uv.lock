@@ -10,6 +10,7 @@ dependencies = [
     { name = "httpx" },
     { name = "mcp", extra = ["cli"] },
     { name = "pydantic" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -23,6 +24,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.0.0" },
     { name = "pydantic", specifier = ">=2.0" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [package.metadata.requires-dev]

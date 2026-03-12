@@ -20,6 +20,7 @@ dependencies = [
     "celery>=5.3.4",
     "httpx>=0.26.0",
     "uuid7>=0.1.0",
+    "agentauth-mcp-server",
 ]
 
 [project.optional-dependencies]
@@ -78,3 +79,9 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.15.5",
 ]
+
+[tool.uv.workspace]
+members = ["mcp-server"]
+
+[tool.uv.sources]
+agentauth-mcp-server = { workspace = true }
