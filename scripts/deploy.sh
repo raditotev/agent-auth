@@ -173,9 +173,9 @@ cmd_deploy() {
   docker compose -f "${COMPOSE_FILE}" run --rm "app-${target_slot}" uv run alembic upgrade head
   log_success "Migrations applied"
 
-  # 4. Start target slot
+  # 4. Start target slot (and all infrastructure services: celery, loki, promtail, grafana)
   log_info "Starting ${BOLD}${target_slot}${RESET} slot (port ${target_port})…"
-  docker compose -f "${COMPOSE_FILE}" --profile "${target_slot}" up -d "app-${target_slot}"
+  docker compose -f "${COMPOSE_FILE}" --profile "${target_slot}" up -d
   log_success "${target_slot} container started"
 
   # 5. Health check
@@ -227,7 +227,7 @@ cmd_rollback() {
 
   # Start previously stopped slot (no build, no migrations — reuses existing image)
   log_info "Starting ${BOLD}${target_slot}${RESET} slot (port ${target_port})…"
-  docker compose -f "${COMPOSE_FILE}" --profile "${target_slot}" up -d "app-${target_slot}"
+  docker compose -f "${COMPOSE_FILE}" --profile "${target_slot}" up -d
   log_success "${target_slot} container started"
 
   # Health check
