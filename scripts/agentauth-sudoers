@@ -1,0 +1,16 @@
+# /etc/sudoers.d/agentauth-deploy
+#
+# Grants the deploy user passwordless sudo for the two commands that the
+# blue/green deploy script (scripts/deploy.sh) requires:
+#
+#   1. ln  — atomically swap the nginx active-slot symlink
+#   2. nginx -s reload — reload nginx config without downtime
+#
+# INSTALL (run as root on the VPS):
+#   cp scripts/agentauth-sudoers /etc/sudoers.d/agentauth-deploy
+#   chmod 440 /etc/sudoers.d/agentauth-deploy
+#
+# Replace "admin" with the actual DEPLOY_USER if different.
+#
+admin ALL=(root) NOPASSWD: /usr/bin/ln -sf /etc/nginx/agentauth-slots/* /etc/nginx/conf.d/agentauth-active.conf
+admin ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload

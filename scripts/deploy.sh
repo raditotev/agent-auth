@@ -20,6 +20,7 @@
 #   - Nginx config files for each slot already present:
 #       /etc/nginx/agentauth-slots/agentauth-blue.conf   (upstream 127.0.0.1:8001)
 #       /etc/nginx/agentauth-slots/agentauth-green.conf  (upstream 127.0.0.1:8002)
+#   - Passwordless sudo configured for the deploy user (see scripts/agentauth-sudoers)
 #
 # =============================================================================
 set -euo pipefail
@@ -116,8 +117,8 @@ swap_nginx() {
   fi
 
   log_info "Swapping nginx symlink → ${target_conf}"
-  sudo ln -sf "${target_conf}" "${ACTIVE_SYMLINK}"
-  sudo nginx -s reload
+  sudo -n ln -sf "${target_conf}" "${ACTIVE_SYMLINK}"
+  sudo -n nginx -s reload
   log_success "Nginx reloaded; traffic now routed to ${BOLD}${target}${RESET}"
 }
 
