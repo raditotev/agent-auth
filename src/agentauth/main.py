@@ -22,6 +22,15 @@ from agentauth.core.redis import get_redis_client
 
 logger = structlog.get_logger()
 
+# Holds a reference to the MCP session manager so the lifespan can
+# initialise its task group.  Set by create_app() before the server starts.
+try:
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager as _MgrType
+except ImportError:  # pragma: no cover
+    _MgrType = None  # type: ignore[assignment,misc]
+
+_mcp_session_manager: _MgrType | None = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -50,7 +59,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await CryptoService(session).rotate_keys()
         await session.commit()
 
-    yield
+    # Start the MCP session manager's task group (FastAPI does not propagate
+    # lifespan events to mounted sub-apps, so we manage it here).
+    if _mcp_session_manager is not None:
+        async with _mcp_session_manager.run():
+            yield
+    else:
+        yield
 
     logger.info("AgentAuth shutting down")
     await close_db()
@@ -86,6 +101,11 @@ def create_app() -> FastAPI:
 
         mcp_starlette = mcp_server.streamable_http_app()
         app.mount("/mcp", mcp_starlette)
+
+        # Store session manager so the lifespan can initialise its task group
+        global _mcp_session_manager
+        _mcp_session_manager = mcp_server.session_manager
+
         logger.info("MCP server mounted at /mcp")
     except ImportError:
         logger.warning("agentauth-mcp-server not installed, MCP endpoint disabled")
