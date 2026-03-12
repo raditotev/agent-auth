@@ -1,0 +1,504 @@
+{
+  "info": {
+    "name": "AgentAuth MCP Server",
+    "description": "Tests all HTTP endpoints exposed by the AgentAuth service that back the MCP server tools.\n\nUsage:\n1. Set the `base_url` variable to your AgentAuth instance (e.g. http://localhost:8000)\n2. Run `Quickstart` to register an agent and auto-populate `api_key`, `access_token`, `refresh_token`, `agent_id`\n3. All subsequent requests use those collection variables automatically",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "api_key", "value": "", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "refresh_token", "value": "", "type": "string" },
+    { "key": "agent_id", "value": "", "type": "string" },
+    { "key": "credential_id", "value": "", "type": "string" },
+    { "key": "delegation_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Discovery",
+      "item": [
+        {
+          "name": "Discover Service Configuration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has issuer', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('issuer');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/.well-known/agent-configuration",
+              "host": ["{{base_url}}"],
+              "path": [".well-known", "agent-configuration"]
+            },
+            "description": "MCP tool: `discover()` — Returns service metadata: issuer, grant types, supported scopes, token lifetimes and endpoint URLs."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agent Lifecycle",
+      "item": [
+        {
+          "name": "Quickstart (Register Agent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 201', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test('Returns agent + api_key + access_token', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('agent');",
+                  "    pm.expect(json).to.have.property('api_key');",
+                  "    pm.expect(json).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.agent?.id)      pm.collectionVariables.set('agent_id', json.agent.id);",
+                  "if (json.api_key)        pm.collectionVariables.set('api_key', json.api_key);",
+                  "if (json.access_token)   pm.collectionVariables.set('access_token', json.access_token);",
+                  "if (json.refresh_token)  pm.collectionVariables.set('refresh_token', json.refresh_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"postman-test-agent\",\n  \"agent_type\": \"orchestrator\",\n  \"description\": \"Created by Postman collection test\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/agents/quickstart",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agents", "quickstart"]
+            },
+            "description": "MCP tool: `quickstart()` — Registers a new root agent and returns credentials in one call. The raw `api_key` is only shown here; store it securely. Automatically sets `agent_id`, `api_key`, `access_token`, and `refresh_token` collection variables."
+          }
+        },
+        {
+          "name": "List Agents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response has data array', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('data');",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/agents?limit=50&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agents"],
+              "query": [
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "MCP tool: `list_agents()` — Lists all registered agents with pagination support."
+          }
+        },
+        {
+          "name": "Get Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns agent with id', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/agents/{{agent_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agents", "{{agent_id}}"]
+            },
+            "description": "MCP tool: `get_agent()` — Fetches full details for a specific agent by UUID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication & Tokens",
+      "item": [
+        {
+          "name": "Authenticate (client_credentials)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns access_token', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('access_token');",
+                  "    pm.expect(json.token_type.toLowerCase()).to.equal('bearer');",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.access_token)  pm.collectionVariables.set('access_token', json.access_token);",
+                  "if (json.refresh_token) pm.collectionVariables.set('refresh_token', json.refresh_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_secret\": \"{{api_key}}\",\n  \"scope\": \"api.read agents.write\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "token"]
+            },
+            "description": "MCP tool: `authenticate()` — Exchanges an API key for an access token via the OAuth 2.0 client_credentials grant. Updates `access_token` and `refresh_token` collection variables."
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns new access_token and refresh_token', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('access_token');",
+                  "    pm.expect(json).to.have.property('refresh_token');",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.access_token)  pm.collectionVariables.set('access_token', json.access_token);",
+                  "if (json.refresh_token) pm.collectionVariables.set('refresh_token', json.refresh_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grant_type\": \"refresh_token\",\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "token"]
+            },
+            "description": "MCP tool: `refresh_token()` — Exchanges a refresh token for a new access + refresh token pair. Updates both collection variables."
+          }
+        },
+        {
+          "name": "Introspect Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns active boolean', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('active');",
+                  "    pm.expect(json.active).to.be.a('boolean');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "token", "value": "{{access_token}}" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/token/introspect",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "token", "introspect"]
+            },
+            "description": "MCP tool: `introspect_token()` — RFC 7662 token introspection. Returns `active: true/false` plus decoded claims (sub, scopes, agent_type, trust_level, exp) if active."
+          }
+        },
+        {
+          "name": "Revoke Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 204', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "token", "value": "{{access_token}}" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/token/revoke",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "token", "revoke"]
+            },
+            "description": "MCP tool: `revoke_token()` — RFC 7009 token revocation. Works for both access and refresh tokens. After calling this, re-authenticate to get a fresh token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Credentials (API Keys)",
+      "item": [
+        {
+          "name": "Create Credential",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 201', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test('Returns credential with id and raw_key', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "    pm.expect(json).to.have.property('raw_key');",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('credential_id', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"type\": \"api_key\",\n  \"scopes\": [\"api.read\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/credentials",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "credentials"]
+            },
+            "description": "MCP tool: `create_credential()` — Issues a new API key for an agent. The `raw_key` is returned only once; store it securely. Sets the `credential_id` collection variable."
+          }
+        },
+        {
+          "name": "Rotate Credential",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 201', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test('Returns new credential with raw_key', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('raw_key');",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('credential_id', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/credentials/{{credential_id}}/rotate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "credentials", "{{credential_id}}", "rotate"]
+            },
+            "description": "MCP tool: `rotate_credential()` — Revokes the existing API key and issues a new one atomically. Updates `credential_id` with the new credential UUID."
+          }
+        },
+        {
+          "name": "Revoke Credential",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 204', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/credentials/{{credential_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "credentials", "{{credential_id}}"]
+            },
+            "description": "MCP tool: `revoke_credential()` — Permanently revokes an API key. This is irreversible."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delegation",
+      "item": [
+        {
+          "name": "Create Delegation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 or 201', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test('Returns delegation with id', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('delegation_id', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delegate_agent_id\": \"{{agent_id}}\",\n  \"scopes\": [\"api.read\"],\n  \"max_chain_depth\": 3,\n  \"expires_at\": \"2027-01-01T00:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/delegations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "delegations"]
+            },
+            "description": "MCP tool: `create_delegation()` — Delegates a subset of the caller's permissions to another agent. `scopes` must be a subset of the delegating agent's own scopes. Sets `delegation_id`.\n\nNote: update `delegate_agent_id` with a different agent's UUID in a real test scenario."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authorization",
+      "item": [
+        {
+          "name": "Check Permission",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns allowed boolean', () => {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('allowed');",
+                  "    pm.expect(json.allowed).to.be.a('boolean');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"action\": \"read\",\n  \"resource\": \"/api/v1/credentials\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/policies/evaluate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "policies", "evaluate"]
+            },
+            "description": "MCP tool: `check_permission()` — Dry-run policy evaluation. Returns `{ allowed: bool, effect: 'allow'|'deny' }` without actually performing the action. Valid `action` values: `read`, `write`, `delete`, `execute`, `delegate`, `admin`."
+          }
+        }
+      ]
+    }
+  ]
+}
