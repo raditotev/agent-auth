@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.config import settings
 from agentauth.core.exceptions import TokenError
+from agentauth.core.redis import get_redis_client
 from agentauth.core.security import decrypt_secret
 from agentauth.models.agent import Agent, AgentType, TrustLevel
 from agentauth.models.signing_key import KeyAlgorithm, SigningKey
@@ -145,8 +146,6 @@ class TokenService:
             refresh_token = await self._sign_jwt(refresh_claims, signing_key)
 
             # Store the token pair relationship in Redis for cascading revocation
-            from agentauth.core.redis import get_redis_client
-
             redis_client = get_redis_client()
             refresh_expires_in_seconds = int((refresh_expires_at - now).total_seconds())
 
@@ -250,27 +249,53 @@ class TokenService:
                     error="Missing key ID in token header",
                 )
 
-            # Get signing key from database
-            signing_key = await self.crypto_service.get_signing_key_by_id(key_id)
+            # Try Redis cache for signing key first, fall back to DB
+            redis_client = get_redis_client()
+            cache_key = f"signing_key_cache:{key_id}"
+            cached_key_data = await redis_client.get_json(cache_key)
 
-            if signing_key is None:
-                return TokenValidationResult(
-                    valid=False,
-                    error="Unknown signing key",
-                    error_detail={"key_id": key_id},
-                )
+            if cached_key_data is not None:
+                # Use cached key data
+                public_key_pem = cached_key_data["public_key_pem"]
+                algorithm_value = cached_key_data["algorithm"]
+                signing_key = None  # Not needed beyond this point
+            else:
+                # Get signing key from database
+                signing_key = await self.crypto_service.get_signing_key_by_id(key_id)
 
-            # Check if key is valid for verification
-            if not signing_key.is_valid_for_verification():
-                return TokenValidationResult(
-                    valid=False,
-                    error="Signing key is not valid for verification",
-                    error_detail={"key_id": key_id, "status": signing_key.status.value},
+                if signing_key is None:
+                    return TokenValidationResult(
+                        valid=False,
+                        error="Unknown signing key",
+                        error_detail={"key_id": key_id},
+                    )
+
+                # Check if key is valid for verification
+                if not signing_key.is_valid_for_verification():
+                    return TokenValidationResult(
+                        valid=False,
+                        error="Signing key is not valid for verification",
+                        error_detail={"key_id": key_id, "status": signing_key.status.value},
+                    )
+
+                public_key_pem = signing_key.public_key_pem
+                algorithm_value = signing_key.algorithm.value
+
+                # Cache the key for future lookups
+                await redis_client.set_json(
+                    cache_key,
+                    {
+                        "public_key_pem": public_key_pem,
+                        "algorithm": algorithm_value,
+                        "key_id": key_id,
+                        "status": signing_key.status.value,
+                    },
+                    ex=600,
                 )
 
             # Load public key
             public_key_obj = serialization.load_pem_public_key(
-                signing_key.public_key_pem.encode("utf-8")
+                public_key_pem.encode("utf-8")
             )
 
             # Verify and decode token
@@ -278,7 +303,7 @@ class TokenService:
             decoded = jwt.decode(
                 token,
                 public_key_obj,  # type: ignore[arg-type]
-                algorithms=[signing_key.algorithm.value],
+                algorithms=[algorithm_value],
                 issuer=self.issuer,
                 audience=expected_audience,
                 options=options,  # type: ignore[arg-type]
@@ -296,6 +321,13 @@ class TokenService:
                             "actual": actual_token_type,
                         },
                     )
+
+            # Check if token has been revoked
+            jti = decoded.get("jti")
+            if jti:
+                revoked = await redis_client.exists(f"revoked:{jti}")
+                if revoked:
+                    return TokenValidationResult(valid=False, claims=None, error="Token has been revoked")
 
             # Parse claims into TokenClaims schema
             try:
@@ -408,8 +440,6 @@ class TokenService:
         Returns:
             Introspection response dict
         """
-        from agentauth.core.redis import get_redis_client
-
         redis_client = get_redis_client()
 
         # Generate cache key from token hash (avoids collision from suffix matching)
@@ -490,6 +520,39 @@ class TokenService:
 
         return introspection_response
 
+    # Lua script for atomic cascading token revocation.
+    # KEYS: [1] revoked:{jti}, [2] introspection_cache_key,
+    #        [3] token_pair:{type}:{jti}
+    # ARGV: [1] ttl, [2] max_ttl
+    # Returns: {paired_jti, paired_cache_key, already_revoked} or nil values.
+    _REVOKE_LUA = """
+    -- Phase 1: revoke primary token and fetch paired info
+    redis.call('SET', KEYS[1], '1', 'EX', tonumber(ARGV[1]))
+    redis.call('DEL', KEYS[2])
+
+    local paired_jti = redis.call('GET', KEYS[3])
+    if not paired_jti then
+        return {false, false, false}
+    end
+
+    -- Phase 2: cascading revocation of the paired token
+    local revoked_key = 'revoked:' .. paired_jti
+    local already_revoked = redis.call('EXISTS', revoked_key)
+    if already_revoked == 0 then
+        redis.call('SET', revoked_key, '1', 'EX', tonumber(ARGV[2]))
+    end
+
+    -- Invalidate paired token's introspection cache
+    local jti_cache_key = 'jti_to_cache:' .. paired_jti
+    local paired_cache_key = redis.call('GET', jti_cache_key)
+    if paired_cache_key then
+        redis.call('DEL', paired_cache_key)
+        redis.call('DEL', jti_cache_key)
+    end
+
+    return {paired_jti, paired_cache_key or '', tostring(already_revoked)}
+    """
+
     async def revoke_token(self, token: str) -> bool:
         """
         Revoke a token by adding its JTI to the blocklist.
@@ -497,14 +560,14 @@ class TokenService:
         Implements cascading revocation: when an access token is revoked,
         its associated refresh token is also revoked, and vice versa.
 
+        Uses a Lua script for atomic execution in a single Redis round trip.
+
         Args:
             token: JWT token string to revoke
 
         Returns:
             True if successfully revoked, False otherwise
         """
-        from agentauth.core.redis import get_redis_client
-
         redis_client = get_redis_client()
 
         try:
@@ -524,80 +587,88 @@ class TokenService:
             ttl = int((expires_at - now).total_seconds())
 
             # Only add to blocklist if token hasn't expired yet
-            if ttl > 0:
-                # Add JTI to revocation blocklist
-                await redis_client.set(f"revoked:{jti}", "1", ex=ttl)
-
-                # Also invalidate any cached introspection results
-                token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-                cache_key = f"introspection:{token_hash}"
-                await redis_client.delete(cache_key)
-
-                logger.info("Token revoked", jti=jti, token_type=token_type, ttl=ttl)
-
-                # Cascading revocation: revoke the paired token
-                paired_jti = None
-                if token_type == "access":
-                    # This is an access token, find and revoke its refresh token
-                    paired_jti = await redis_client.get(f"token_pair:access:{jti}")
-                    if paired_jti:
-                        logger.info(
-                            "Cascading revocation: revoking paired refresh token",
-                            access_jti=jti,
-                            refresh_jti=paired_jti,
-                        )
-                elif token_type == "refresh":
-                    # This is a refresh token, find and revoke its access token
-                    paired_jti = await redis_client.get(f"token_pair:refresh:{jti}")
-                    if paired_jti:
-                        logger.info(
-                            "Cascading revocation: revoking paired access token",
-                            refresh_jti=jti,
-                            access_jti=paired_jti,
-                        )
-
-                # Revoke the paired token if it exists
-                if paired_jti:
-                    # Check if paired token exists in blocklist already
-                    already_revoked = await redis_client.exists(f"revoked:{paired_jti}")
-                    if not already_revoked:
-                        # We don't have the full token or its expiry, so use max TTL from settings
-                        # Use the maximum of access and refresh token lifetimes
-                        max_ttl = max(
-                            settings.access_token_expire_minutes * 60,
-                            settings.refresh_token_expire_days * 24 * 60 * 60,
-                        )
-                        await redis_client.set(f"revoked:{paired_jti}", "1", ex=max_ttl)
-                        logger.info("Paired token revoked", paired_jti=paired_jti)
-
-                    # Invalidate cached introspection for the paired token
-                    # We map JTI -> cache key during introspection, retrieve and delete it
-                    paired_cache_key = await redis_client.get(f"jti_to_cache:{paired_jti}")
-                    if paired_cache_key:
-                        await redis_client.delete(paired_cache_key)
-                        await redis_client.delete(f"jti_to_cache:{paired_jti}")
-                        logger.debug(
-                            "Invalidated cache for paired token",
-                            paired_jti=paired_jti,
-                            cache_key=paired_cache_key,
-                        )
-
-                    # Clean up token pair mappings
-                    if token_type == "access":
-                        await redis_client.delete(f"token_pair:access:{jti}")
-                        await redis_client.delete(f"token_pair:refresh:{paired_jti}")
-                    else:
-                        await redis_client.delete(f"token_pair:refresh:{jti}")
-                        await redis_client.delete(f"token_pair:access:{paired_jti}")
-
-                return True
-            else:
+            if ttl <= 0:
                 logger.debug("Token already expired, no need to revoke", jti=jti)
                 return True
+
+            # Build keys for the Lua script
+            token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+            cache_key = f"introspection:{token_hash}"
+            pair_key = f"token_pair:{token_type}:{jti}"
+
+            max_ttl = max(
+                settings.access_token_expire_minutes * 60,
+                settings.refresh_token_expire_days * 24 * 60 * 60,
+            )
+
+            # Execute atomic Lua script: revoke + cache invalidate + cascade
+            result = await redis_client.eval_script(
+                self._REVOKE_LUA,
+                keys=[f"revoked:{jti}", cache_key, pair_key],
+                args=[str(ttl), str(max_ttl)],
+            )
+
+            logger.info("Token revoked", jti=jti, token_type=token_type, ttl=ttl)
+
+            # Process Lua script results for logging and pair-mapping cleanup
+            paired_jti = result[0] if result and result[0] else None
+            if paired_jti:
+                paired_cache_key = result[1] if result[1] else None
+                already_revoked = result[2] == "1" if result[2] else False
+
+                if token_type == "access":
+                    logger.info(
+                        "Cascading revocation: revoking paired refresh token",
+                        access_jti=jti,
+                        refresh_jti=paired_jti,
+                    )
+                else:
+                    logger.info(
+                        "Cascading revocation: revoking paired access token",
+                        refresh_jti=jti,
+                        access_jti=paired_jti,
+                    )
+
+                if not already_revoked:
+                    logger.info("Paired token revoked", paired_jti=paired_jti)
+
+                if paired_cache_key:
+                    logger.debug(
+                        "Invalidated cache for paired token",
+                        paired_jti=paired_jti,
+                        cache_key=paired_cache_key,
+                    )
+
+                # Clean up token pair mappings (two DELETE calls, use pipeline)
+                await self._cleanup_pair_mappings(
+                    redis_client, token_type, jti, paired_jti
+                )
+
+            return True
 
         except Exception as e:
             logger.error("Failed to revoke token", error=str(e))
             return False
+
+    @staticmethod
+    async def _cleanup_pair_mappings(
+        redis_client: Any,
+        token_type: str,
+        jti: str,
+        paired_jti: str,
+    ) -> None:
+        """Delete token pair mapping keys using a pipeline."""
+        try:
+            async with redis_client.pipeline() as pipe:
+                if token_type == "access":
+                    pipe.delete(f"token_pair:access:{jti}")
+                    pipe.delete(f"token_pair:refresh:{paired_jti}")
+                else:
+                    pipe.delete(f"token_pair:refresh:{jti}")
+                    pipe.delete(f"token_pair:access:{paired_jti}")
+                await pipe.execute()
+        except Exception as e:
+            logger.warning("Failed to clean up pair mappings", error=str(e))
 
     async def refresh_token_grant(self, refresh_token: str) -> TokenResponse:
         """
@@ -617,7 +688,6 @@ class TokenService:
         """
         from sqlalchemy import select
 
-        from agentauth.core.redis import get_redis_client
         from agentauth.models.agent import Agent
 
         redis_client = get_redis_client()

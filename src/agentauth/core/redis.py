@@ -236,6 +236,12 @@ class RedisClient:
             logger.warning("Redis EXPIRE failed", key=key, error=str(e))
             return False
 
+    def pipeline(self) -> redis.client.Pipeline:
+        """Return a Redis pipeline context manager for batching commands."""
+        if self._client is None:
+            raise RuntimeError("Redis not connected")
+        return self._client.pipeline()
+
     async def eval_script(self, script: str, keys: list[str], args: list[str]) -> Any:
         """Evaluate a Lua script on the Redis server."""
         if self._client is None:

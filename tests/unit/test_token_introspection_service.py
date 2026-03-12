@@ -28,7 +28,7 @@ async def test_introspect_valid_token(
     )
 
     # Introspect the token (disable cache for unit test)
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_client.get_json.return_value = None
         mock_client.exists.return_value = False
@@ -63,7 +63,7 @@ async def test_introspect_invalid_token(
     """Test introspection of an invalid token."""
     token_service = TokenService(db_session)
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_client.get_json.return_value = None
         mock_client.set_json.return_value = True
@@ -93,7 +93,7 @@ async def test_introspect_expired_token(
         expires_in_minutes=-1,  # Already expired
     )
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_client.get_json.return_value = None
         mock_client.exists.return_value = False
@@ -122,7 +122,7 @@ async def test_introspect_revoked_token(
         token_type="access",
     )
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_client.get_json.return_value = None
         mock_client.exists.return_value = True  # Token is in revocation blocklist
@@ -158,7 +158,7 @@ async def test_introspect_uses_cache(
         "jti": "cached-jti",
     }
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_client.get_json.return_value = cached_response
         mock_redis.return_value = mock_client
@@ -190,7 +190,7 @@ async def test_introspect_caches_result(
         expires_in_minutes=15,
     )
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_client.get_json.return_value = None
         mock_client.exists.return_value = False
@@ -202,9 +202,16 @@ async def test_introspect_caches_result(
             use_cache=True,
         )
 
-        # Verify cache was written
-        mock_client.set_json.assert_called_once()
-        call_args = mock_client.set_json.call_args
+        # Verify cache was written (signing key cache + introspection cache)
+        assert mock_client.set_json.call_count == 2
+
+        # Find the introspection cache call
+        introspection_calls = [
+            c for c in mock_client.set_json.call_args_list
+            if c[0][0].startswith("introspection:")
+        ]
+        assert len(introspection_calls) == 1
+        call_args = introspection_calls[0]
         cache_key = call_args[0][0]
         cached_data = call_args[0][1]
         ttl = call_args[1]["ex"]
@@ -232,9 +239,11 @@ async def test_introspect_skip_cache(
         token_type="access",
     )
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
-        mock_client.get_json.return_value = {"active": True, "cached": True}
+        # First get_json call: signing key cache (miss), second: introspection cache
+        mock_client.get_json.side_effect = [None, {"active": True, "cached": True}]
+        mock_client.set_json.return_value = True
         mock_client.exists.return_value = False  # Not revoked
         mock_redis.return_value = mock_client
 
@@ -264,11 +273,10 @@ async def test_revoke_token(
         token_type="access",
     )
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
-        mock_client.set.return_value = True
-        mock_client.delete.return_value = True
-        mock_client.get = AsyncMock(return_value=None)  # No paired token in Redis
+        # Lua script returns [no_paired_jti, no_cache_key, not_already_revoked]
+        mock_client.eval_script.return_value = [False, False, False]
         mock_redis.return_value = mock_client
 
         # Revoke the token
@@ -276,16 +284,12 @@ async def test_revoke_token(
 
     assert revoked is True
 
-    # Verify calls to Redis
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
-        mock_redis.return_value = mock_client
-        mock_client.set.assert_called_once()
-        mock_client.delete.assert_called_once()
-
-        # Verify the JTI was added to revocation blocklist
-        set_call_args = mock_client.set.call_args
-        key = set_call_args[0][0]
-        assert key.startswith("revoked:")
+    # Verify Lua script was called (replaces individual SET/DELETE/GET calls)
+    mock_client.eval_script.assert_called_once()
+    call_args = mock_client.eval_script.call_args
+    # eval_script is called with positional args: (script, keys=..., args=...)
+    keys = call_args.kwargs.get("keys") or call_args[1]["keys"]
+    assert keys[0].startswith("revoked:")
 
 
 @pytest.mark.asyncio
@@ -305,7 +309,7 @@ async def test_revoke_expired_token(
         expires_in_minutes=-5,  # Expired 5 minutes ago
     )
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_client.set.return_value = True
         mock_redis.return_value = mock_client
@@ -324,7 +328,7 @@ async def test_revoke_invalid_token(
     """Test revocation of invalid token."""
     token_service = TokenService(db_session)
 
-    with patch("agentauth.core.redis.get_redis_client") as mock_redis:
+    with patch("agentauth.services.token.get_redis_client") as mock_redis:
         mock_client = AsyncMock()
         mock_redis.return_value = mock_client
 
