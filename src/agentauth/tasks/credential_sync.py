@@ -74,11 +74,7 @@ async def _flush_last_used_async(
         try:
             # Bulk update each credential's last_used_at
             for cred_id, ts in updates.items():
-                stmt = (
-                    update(Credential)
-                    .where(Credential.id == cred_id)
-                    .values(last_used_at=ts)
-                )
+                stmt = update(Credential).where(Credential.id == cred_id).values(last_used_at=ts)
                 await session.execute(stmt)
             await session.commit()
         except Exception as e:

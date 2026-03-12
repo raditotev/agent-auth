@@ -294,9 +294,7 @@ class TokenService:
                 )
 
             # Load public key
-            public_key_obj = serialization.load_pem_public_key(
-                public_key_pem.encode("utf-8")
-            )
+            public_key_obj = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
 
             # Verify and decode token
             options = {"verify_aud": expected_audience is not None}
@@ -327,7 +325,9 @@ class TokenService:
             if jti:
                 revoked = await redis_client.exists(f"revoked:{jti}")
                 if revoked:
-                    return TokenValidationResult(valid=False, claims=None, error="Token has been revoked")
+                    return TokenValidationResult(
+                        valid=False, claims=None, error="Token has been revoked"
+                    )
 
             # Parse claims into TokenClaims schema
             try:
@@ -640,9 +640,7 @@ class TokenService:
                     )
 
                 # Clean up token pair mappings (two DELETE calls, use pipeline)
-                await self._cleanup_pair_mappings(
-                    redis_client, token_type, jti, paired_jti
-                )
+                await self._cleanup_pair_mappings(redis_client, token_type, jti, paired_jti)
 
             return True
 
