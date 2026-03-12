@@ -247,7 +247,8 @@ class RedisClient:
         if self._client is None:
             await self.connect()
         assert self._client is not None
-        return await self._client.eval(script, len(keys), *keys, *args)
+        result = self._client.eval(script, len(keys), *keys, *args)
+        return await result  # type: ignore[misc]
 
     async def scan_keys(self, pattern: str) -> list[str]:
         """Return all keys matching a glob pattern using SCAN.

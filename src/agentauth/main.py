@@ -82,7 +82,7 @@ def create_app() -> FastAPI:
 
     # Mount MCP server (Streamable HTTP) — endpoint at /mcp
     try:
-        from agentauth_mcp.server import mcp as mcp_server
+        from agentauth_mcp.server import mcp as mcp_server  # type: ignore[import-untyped]
 
         mcp_starlette = mcp_server.streamable_http_app()
         app.mount("/mcp", mcp_starlette)
