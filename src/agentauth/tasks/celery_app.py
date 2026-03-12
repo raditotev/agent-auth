@@ -27,6 +27,7 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=[
         "agentauth.tasks.key_rotation",
+        "agentauth.tasks.credential_sync",
     ],
 )
 
@@ -44,6 +45,11 @@ celery_app.conf.update(
             "task": "agentauth.rotate_signing_keys",
             "schedule": 86400.0,  # Every 24 hours
             "options": {"expires": 3600},
+        },
+        "flush-credential-last-used": {
+            "task": "agentauth.flush_credential_last_used",
+            "schedule": 60.0,  # Every 60 seconds
+            "options": {"expires": 55},
         },
     },
 )

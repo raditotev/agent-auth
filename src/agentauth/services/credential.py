@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.core.exceptions import CredentialError, NotFoundError
+from agentauth.core.redis import get_redis_client
 from agentauth.core.security import (
     generate_api_key,
     get_key_prefix,
@@ -201,9 +202,13 @@ class CredentialService:
                 continue
 
             if verify_secret(credential.hash, raw_key):
-                # Update last_used_at
-                credential.last_used_at = datetime.now(UTC)
-                await self.session.flush()
+                # Record usage in Redis for deferred batch flush to DB
+                redis_client = get_redis_client()
+                await redis_client.set(
+                    f"cred_last_used:{credential.id}",
+                    datetime.now(UTC).isoformat(),
+                    ex=300,
+                )
 
                 logger.info(
                     "credential_verified",

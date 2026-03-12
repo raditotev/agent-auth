@@ -163,8 +163,8 @@ class TestCredentialService:
         assert verified.id == credential.id
         assert verified.agent_id == root_agent.id
 
-        # last_used_at should be updated
-        assert verified.last_used_at is not None
+        # last_used_at is now deferred to Redis, not set on the model directly
+        # (see test_credential_sync.py for Redis/flush tests)
 
     async def test_verify_credential_invalid_key(
         self, db_session: AsyncSession, root_agent: Agent
