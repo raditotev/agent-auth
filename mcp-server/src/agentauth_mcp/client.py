@@ -12,6 +12,12 @@ class AgentAuthHTTPClient:
         self.base_url = base_url.rstrip("/")
         self._http = httpx.AsyncClient(timeout=timeout)
 
+    async def __aenter__(self) -> "AgentAuthHTTPClient":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
+
     # -- helpers --
 
     async def _request(
@@ -48,15 +54,27 @@ class AgentAuthHTTPClient:
         agent_type: str,
         description: str | None = None,
     ) -> dict[str, Any]:
-        return await self._request(
-            "POST",
-            "/api/v1/agents/quickstart",
-            json={
-                "name": name,
-                "agent_type": agent_type,
-                "description": description,
-            },
-        )
+        """Register a new agent and return a flattened response.
+
+        Normalizes the API envelope so token fields (access_token, refresh_token,
+        token_type, expires_in, expires_at, refresh_before) sit alongside agent
+        and api_key at the top level.
+        """
+        body: dict[str, Any] = {"name": name, "agent_type": agent_type}
+        if description is not None:
+            body["description"] = description
+        raw = await self._request("POST", "/api/v1/agents/quickstart", json=body)
+        token_obj: dict[str, Any] = raw.get("token") or {}
+        return {
+            "agent": raw.get("agent"),
+            "api_key": raw.get("api_key"),
+            "access_token": token_obj.get("access_token"),
+            "refresh_token": token_obj.get("refresh_token"),
+            "token_type": token_obj.get("token_type", "Bearer"),
+            "expires_in": token_obj.get("expires_in"),
+            "expires_at": token_obj.get("expires_at"),
+            "refresh_before": token_obj.get("refresh_before"),
+        }
 
     async def authenticate(
         self,
@@ -101,22 +119,35 @@ class AgentAuthHTTPClient:
         auth: str,
         scopes: list[str] | None = None,
     ) -> dict[str, Any]:
+        """Issue a new API key, flattening {"credential": {...}, "raw_key": "..."} to top level."""
         body: dict[str, Any] = {"agent_id": agent_id, "type": "api_key"}
         if scopes:
             body["scopes"] = scopes
-        return await self._request(
+        raw = await self._request(
             "POST",
             "/api/v1/credentials",
             json=body,
             headers=self._auth_headers(token=auth),
         )
+        result = dict(raw.get("credential") or raw)
+        if "raw_key" in raw:
+            result["raw_key"] = raw["raw_key"]
+        return result
 
     async def rotate_credential(self, credential_id: str, auth: str) -> dict[str, Any]:
-        return await self._request(
+        """Rotate an API key, returning the new credential flat with raw_key and old_credential_id."""
+        raw = await self._request(
             "POST",
             f"/api/v1/credentials/{credential_id}/rotate",
             headers=self._auth_headers(token=auth),
         )
+        new_cred: dict[str, Any] = dict(raw.get("new_credential") or raw)
+        if "raw_key" in raw:
+            new_cred["raw_key"] = raw["raw_key"]
+        old_cred: dict[str, Any] = raw.get("old_credential") or {}
+        if old_id := old_cred.get("id"):
+            new_cred["old_credential_id"] = old_id
+        return new_cred
 
     async def revoke_credential(self, credential_id: str, auth: str) -> dict[str, Any]:
         return await self._request(
@@ -136,11 +167,17 @@ class AgentAuthHTTPClient:
         )
 
     async def get_agent(self, agent_id: str, auth: str) -> dict[str, Any]:
-        return await self._request(
+        """Fetch agent details, unwrapping the {"data": {...}, "meta": {...}} envelope."""
+        raw = await self._request(
             "GET",
             f"/api/v1/agents/{agent_id}",
             headers=self._auth_headers(token=auth),
         )
+        agent = dict(raw.get("data") or raw)
+        meta: dict[str, Any] = raw.get("meta") or {}
+        if meta:
+            agent.update(meta)
+        return agent
 
     async def create_delegation(
         self,

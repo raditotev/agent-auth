@@ -3,6 +3,7 @@
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 import agentauth_mcp.server as server_module
@@ -97,7 +98,16 @@ class TestDiscoverTool:
 class TestQuickstartTool:
     @pytest.mark.asyncio
     async def test_quickstart_passes_args_to_client(self) -> None:
-        expected = {"agent": {"id": "uuid"}, "api_key": "raw-key", "access_token": "tok"}
+        expected = {
+            "agent": {"id": "uuid"},
+            "api_key": "raw-key",
+            "access_token": "tok",
+            "refresh_token": "rt",
+            "token_type": "Bearer",
+            "expires_in": 900,
+            "expires_at": "2026-01-01T00:15:00Z",
+            "refresh_before": "2026-01-01T00:14:00Z",
+        }
         mock_client = _make_mock_client(quickstart=expected)
 
         with patch.object(server_module, "_get_client", return_value=mock_client):
@@ -114,6 +124,22 @@ class TestQuickstartTool:
             await server_module.quickstart("my-agent", "tool")
 
         mock_client.quickstart.assert_awaited_once_with("my-agent", "tool", None)
+
+    @pytest.mark.asyncio
+    async def test_quickstart_returns_http_error_dict(self) -> None:
+        error_response = MagicMock()
+        error_response.status_code = 422
+        error_response.json.return_value = {"detail": "Validation error"}
+        mock_client = MagicMock(spec=AgentAuthHTTPClient)
+        mock_client.quickstart = AsyncMock(
+            side_effect=httpx.HTTPStatusError("422", request=MagicMock(), response=error_response)
+        )
+
+        with patch.object(server_module, "_get_client", return_value=mock_client):
+            result = await server_module.quickstart("bad", "unknown")
+
+        assert result["status_code"] == 422
+        assert "error" in result
 
 
 # ---------------------------------------------------------------------------
@@ -425,3 +451,63 @@ class TestCheckPermissionTool:
             )
 
         assert result["allowed"] is False
+
+
+# ---------------------------------------------------------------------------
+# HTTP error handling — cross-cutting concern
+# ---------------------------------------------------------------------------
+
+
+def _http_error_side_effect(status_code: int, detail: object = "error") -> httpx.HTTPStatusError:
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = {"detail": detail}
+    return httpx.HTTPStatusError(str(status_code), request=MagicMock(), response=resp)
+
+
+class TestHttpErrorHandling:
+    @pytest.mark.asyncio
+    async def test_authenticate_returns_error_dict_on_401(self) -> None:
+        mock_client = MagicMock(spec=AgentAuthHTTPClient)
+        mock_client.authenticate = AsyncMock(side_effect=_http_error_side_effect(401))
+
+        with patch.object(server_module, "_get_client", return_value=mock_client):
+            result = await server_module.authenticate(api_key="bad-key")
+
+        assert result["status_code"] == 401
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_get_agent_returns_error_dict_on_404(self) -> None:
+        mock_client = MagicMock(spec=AgentAuthHTTPClient)
+        mock_client.get_agent = AsyncMock(side_effect=_http_error_side_effect(404, "Not found"))
+
+        with patch.object(server_module, "_get_client", return_value=mock_client):
+            result = await server_module.get_agent("missing-id", "tok")
+
+        assert result["status_code"] == 404
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_create_credential_returns_error_dict_on_403(self) -> None:
+        mock_client = MagicMock(spec=AgentAuthHTTPClient)
+        mock_client.create_credential = AsyncMock(side_effect=_http_error_side_effect(403))
+
+        with patch.object(server_module, "_get_client", return_value=mock_client):
+            result = await server_module.create_credential("agent-id", "tok")
+
+        assert result["status_code"] == 403
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_check_permission_returns_error_dict_on_500(self) -> None:
+        mock_client = MagicMock(spec=AgentAuthHTTPClient)
+        mock_client.check_permission = AsyncMock(side_effect=_http_error_side_effect(500))
+
+        with patch.object(server_module, "_get_client", return_value=mock_client):
+            result = await server_module.check_permission(
+                agent_id="id", action="read", resource="/res", access_token="tok"
+            )
+
+        assert result["status_code"] == 500
+        assert "error" in result

@@ -213,7 +213,20 @@ class TestQuickstart:
     async def test_quickstart_sends_required_fields(
         self, client: AgentAuthHTTPClient, mock_response: MagicMock
     ) -> None:
-        mock_response.json.return_value = {"agent": {"id": "uuid"}, "api_key": "key", "access_token": "tok"}
+        mock_response.json.return_value = {
+            "agent": {"id": "uuid", "name": "my-agent"},
+            "api_key": "key",
+            "api_key_prefix": "key",
+            "token": {
+                "access_token": "tok",
+                "refresh_token": "rt",
+                "token_type": "Bearer",
+                "expires_in": 900,
+                "expires_at": "2026-01-01T00:15:00Z",
+                "refresh_before": "2026-01-01T00:14:00Z",
+            },
+            "message": "Agent registered successfully.",
+        }
         http_mock = AsyncMock(return_value=mock_response)
 
         with patch.object(client._http, "request", new=http_mock):
@@ -225,10 +238,52 @@ class TestQuickstart:
         assert body["agent_type"] == "orchestrator"
 
     @pytest.mark.asyncio
+    async def test_quickstart_flattens_token_fields(
+        self, client: AgentAuthHTTPClient, mock_response: MagicMock
+    ) -> None:
+        mock_response.json.return_value = {
+            "agent": {"id": "uuid"},
+            "api_key": "key",
+            "token": {
+                "access_token": "tok",
+                "refresh_token": "rt",
+                "token_type": "Bearer",
+                "expires_in": 900,
+                "expires_at": "2026-01-01T00:15:00Z",
+                "refresh_before": "2026-01-01T00:14:00Z",
+            },
+        }
+        http_mock = AsyncMock(return_value=mock_response)
+
+        with patch.object(client._http, "request", new=http_mock):
+            result = await client.quickstart("my-agent", "orchestrator")
+
+        assert result["access_token"] == "tok"
+        assert result["refresh_token"] == "rt"
+        assert result["token_type"] == "Bearer"
+        assert result["expires_in"] == 900
+        assert result["expires_at"] == "2026-01-01T00:15:00Z"
+        assert result["refresh_before"] == "2026-01-01T00:14:00Z"
+        assert "token" not in result
+
+    @pytest.mark.asyncio
+    async def test_quickstart_omits_none_description(
+        self, client: AgentAuthHTTPClient, mock_response: MagicMock
+    ) -> None:
+        mock_response.json.return_value = {"agent": {}, "api_key": "k", "token": {}}
+        http_mock = AsyncMock(return_value=mock_response)
+
+        with patch.object(client._http, "request", new=http_mock):
+            await client.quickstart("my-agent", "tool")
+
+        body = http_mock.call_args.kwargs["json"]
+        assert "description" not in body
+
+    @pytest.mark.asyncio
     async def test_quickstart_with_description(
         self, client: AgentAuthHTTPClient, mock_response: MagicMock
     ) -> None:
-        mock_response.json.return_value = {}
+        mock_response.json.return_value = {"agent": {}, "api_key": "k", "token": {}}
         http_mock = AsyncMock(return_value=mock_response)
 
         with patch.object(client._http, "request", new=http_mock):
@@ -243,7 +298,11 @@ class TestCreateCredential:
     async def test_create_credential_sends_agent_id_and_type(
         self, client: AgentAuthHTTPClient, mock_response: MagicMock
     ) -> None:
-        mock_response.json.return_value = {"id": "cred-uuid", "prefix": "aa_abc123"}
+        mock_response.json.return_value = {
+            "credential": {"id": "cred-uuid", "prefix": "aa_abc123", "agent_id": "agent-uuid"},
+            "raw_key": "aa_secretkey",
+            "message": "Save the raw_key.",
+        }
         http_mock = AsyncMock(return_value=mock_response)
 
         with patch.object(client._http, "request", new=http_mock):
@@ -254,10 +313,28 @@ class TestCreateCredential:
         assert body["type"] == "api_key"
 
     @pytest.mark.asyncio
+    async def test_create_credential_flattens_envelope(
+        self, client: AgentAuthHTTPClient, mock_response: MagicMock
+    ) -> None:
+        mock_response.json.return_value = {
+            "credential": {"id": "cred-uuid", "prefix": "aa_abc123"},
+            "raw_key": "aa_secretkey",
+        }
+        http_mock = AsyncMock(return_value=mock_response)
+
+        with patch.object(client._http, "request", new=http_mock):
+            result = await client.create_credential("agent-uuid", auth="tok")
+
+        assert result["id"] == "cred-uuid"
+        assert result["prefix"] == "aa_abc123"
+        assert result["raw_key"] == "aa_secretkey"
+        assert "credential" not in result
+
+    @pytest.mark.asyncio
     async def test_create_credential_with_scopes(
         self, client: AgentAuthHTTPClient, mock_response: MagicMock
     ) -> None:
-        mock_response.json.return_value = {}
+        mock_response.json.return_value = {"credential": {}, "raw_key": "k"}
         http_mock = AsyncMock(return_value=mock_response)
 
         with patch.object(client._http, "request", new=http_mock):
@@ -270,7 +347,7 @@ class TestCreateCredential:
     async def test_create_credential_sends_bearer_token(
         self, client: AgentAuthHTTPClient, mock_response: MagicMock
     ) -> None:
-        mock_response.json.return_value = {}
+        mock_response.json.return_value = {"credential": {}, "raw_key": "k"}
         http_mock = AsyncMock(return_value=mock_response)
 
         with patch.object(client._http, "request", new=http_mock):
@@ -285,15 +362,39 @@ class TestRotateCredential:
     async def test_rotate_calls_rotate_endpoint(
         self, client: AgentAuthHTTPClient, mock_response: MagicMock
     ) -> None:
-        mock_response.json.return_value = {"prefix": "new_prefix"}
+        mock_response.json.return_value = {
+            "old_credential": {"id": "old-uuid", "prefix": "old"},
+            "new_credential": {"id": "new-uuid", "prefix": "new_prefix"},
+            "raw_key": "new_raw_key",
+        }
         http_mock = AsyncMock(return_value=mock_response)
 
         with patch.object(client._http, "request", new=http_mock):
             result = await client.rotate_credential("cred-uuid", auth="tok")
 
-        assert result["prefix"] == "new_prefix"
         url = http_mock.call_args.args[1]
         assert "/api/v1/credentials/cred-uuid/rotate" in url
+
+    @pytest.mark.asyncio
+    async def test_rotate_flattens_new_credential(
+        self, client: AgentAuthHTTPClient, mock_response: MagicMock
+    ) -> None:
+        mock_response.json.return_value = {
+            "old_credential": {"id": "old-uuid"},
+            "new_credential": {"id": "new-uuid", "prefix": "new_prefix"},
+            "raw_key": "new_raw_key",
+        }
+        http_mock = AsyncMock(return_value=mock_response)
+
+        with patch.object(client._http, "request", new=http_mock):
+            result = await client.rotate_credential("cred-uuid", auth="tok")
+
+        assert result["id"] == "new-uuid"
+        assert result["prefix"] == "new_prefix"
+        assert result["raw_key"] == "new_raw_key"
+        assert result["old_credential_id"] == "old-uuid"
+        assert "new_credential" not in result
+        assert "old_credential" not in result
 
 
 class TestRevokeCredential:
@@ -334,15 +435,37 @@ class TestGetAgent:
     async def test_get_agent_builds_correct_url(
         self, client: AgentAuthHTTPClient, mock_response: MagicMock
     ) -> None:
-        mock_response.json.return_value = {"id": "agent-uuid", "name": "my-agent"}
+        mock_response.json.return_value = {
+            "data": {"id": "agent-uuid", "name": "my-agent", "status": "active"},
+            "meta": {"is_root": True, "is_active": True},
+        }
+        http_mock = AsyncMock(return_value=mock_response)
+
+        with patch.object(client._http, "request", new=http_mock):
+            result = await client.get_agent("agent-uuid", auth="tok")
+
+        url = http_mock.call_args.args[1]
+        assert "/api/v1/agents/agent-uuid" in url
+
+    @pytest.mark.asyncio
+    async def test_get_agent_unwraps_data_envelope(
+        self, client: AgentAuthHTTPClient, mock_response: MagicMock
+    ) -> None:
+        mock_response.json.return_value = {
+            "data": {"id": "agent-uuid", "name": "my-agent"},
+            "meta": {"is_root": True, "is_active": True},
+        }
         http_mock = AsyncMock(return_value=mock_response)
 
         with patch.object(client._http, "request", new=http_mock):
             result = await client.get_agent("agent-uuid", auth="tok")
 
         assert result["id"] == "agent-uuid"
-        url = http_mock.call_args.args[1]
-        assert "/api/v1/agents/agent-uuid" in url
+        assert result["name"] == "my-agent"
+        assert result["is_root"] is True
+        assert result["is_active"] is True
+        assert "data" not in result
+        assert "meta" not in result
 
 
 class TestCreateDelegation:

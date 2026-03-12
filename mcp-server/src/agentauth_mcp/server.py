@@ -10,7 +10,10 @@ Configuration via environment variables:
 """
 
 import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 
 from agentauth_mcp.client import AgentAuthHTTPClient
@@ -18,17 +21,6 @@ from agentauth_mcp.client import AgentAuthHTTPClient
 # ---------------------------------------------------------------------------
 # Server setup
 # ---------------------------------------------------------------------------
-
-mcp = FastMCP(
-    "AgentAuth",
-    instructions=(
-        "This MCP server lets you interact with the AgentAuth identity and "
-        "authentication service. Use the 'discover' tool first to learn "
-        "about available endpoints and capabilities. Use 'quickstart' to "
-        "register a new agent and get credentials in one call. Use "
-        "'authenticate' to exchange an API key for an access token."
-    ),
-)
 
 _client: AgentAuthHTTPClient | None = None
 
@@ -51,6 +43,38 @@ def _default_api_key() -> str | None:
     return os.environ.get("AGENTAUTH_API_KEY")
 
 
+def _http_error(e: httpx.HTTPStatusError) -> dict:
+    try:
+        detail = e.response.json()
+    except Exception:
+        detail = e.response.text
+    return {
+        "error": f"HTTP {e.response.status_code}",
+        "status_code": e.response.status_code,
+        "detail": detail,
+    }
+
+
+@asynccontextmanager
+async def _lifespan(_: FastMCP) -> AsyncIterator[None]:
+    yield
+    if _client is not None:
+        await _client.close()
+
+
+mcp = FastMCP(
+    "AgentAuth",
+    lifespan=_lifespan,
+    instructions=(
+        "This MCP server lets you interact with the AgentAuth identity and "
+        "authentication service. Use the 'discover' tool first to learn "
+        "about available endpoints and capabilities. Use 'quickstart' to "
+        "register a new agent and get credentials in one call. Use "
+        "'authenticate' to exchange an API key for an access token."
+    ),
+)
+
+
 # ---------------------------------------------------------------------------
 # Tools — Discovery
 # ---------------------------------------------------------------------------
@@ -64,8 +88,10 @@ async def discover() -> dict:
     grant types, available scopes, token lifetimes, and all endpoint URLs.
     Call this first to understand what the service offers.
     """
-    client = _get_client()
-    return await client.discover()
+    try:
+        return await _get_client().discover()
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 # ---------------------------------------------------------------------------
@@ -81,18 +107,23 @@ async def quickstart(
 ) -> dict:
     """Register a new root agent and get credentials in one call.
 
-    This is the fastest way to get started. Returns:
-    - The registered agent identity
-    - An API key (save it — shown only once)
-    - A ready-to-use access token
+    This is the fastest way to get started. Returns a flat object:
+    - agent: the registered agent identity (id, name, agent_type, trust_level, …)
+    - api_key: raw API key — save it immediately, shown only once
+    - access_token: ready-to-use Bearer token (valid 15 min)
+    - refresh_token: use with refresh_token tool before access_token expires
+    - expires_at / refresh_before: ISO-8601 timestamps for token lifecycle
+    - token_type, expires_in: standard OAuth fields
 
     Args:
         name: Human-readable agent name (e.g. "my-data-pipeline")
         agent_type: One of: orchestrator, autonomous, assistant, tool
         description: Optional description of the agent's purpose
     """
-    client = _get_client()
-    return await client.quickstart(name, agent_type, description)
+    try:
+        return await _get_client().quickstart(name, agent_type, description)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 @mcp.tool()
@@ -108,20 +139,27 @@ async def list_agents(
         limit: Max results (1-100, default 50)
         offset: Pagination offset
     """
-    client = _get_client()
-    return await client.list_agents(auth=access_token, limit=limit, offset=offset)
+    try:
+        return await _get_client().list_agents(auth=access_token, limit=limit, offset=offset)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 @mcp.tool()
 async def get_agent(agent_id: str, access_token: str) -> dict:
     """Get details for a specific agent by ID.
 
+    Returns agent fields (id, name, agent_type, trust_level, status, …)
+    merged with metadata (is_root, is_active) in a single flat object.
+
     Args:
         agent_id: UUID of the agent
         access_token: Bearer token for authentication
     """
-    client = _get_client()
-    return await client.get_agent(agent_id, auth=access_token)
+    try:
+        return await _get_client().get_agent(agent_id, auth=access_token)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +174,8 @@ async def authenticate(
 ) -> dict:
     """Exchange an API key for an access token (client_credentials grant).
 
-    Returns an access token, refresh token, and expiry metadata.
-    The access token should be used in Authorization: Bearer headers
-    for subsequent API calls.
+    Returns standard OAuth fields: access_token, refresh_token, token_type,
+    expires_in, expires_at, refresh_before.
 
     Args:
         api_key: AgentAuth API key. If omitted, uses AGENTAUTH_API_KEY env var.
@@ -152,7 +189,10 @@ async def authenticate(
             "error": "No API key provided and AGENTAUTH_API_KEY is not set. "
             "Either pass api_key or use 'quickstart' to register a new agent."
         }
-    return await client.authenticate(key, scopes)
+    try:
+        return await client.authenticate(key, scopes)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 @mcp.tool()
@@ -165,8 +205,10 @@ async def refresh_token(refresh_token_value: str) -> dict:
     Args:
         refresh_token_value: The refresh token from a previous authenticate call
     """
-    client = _get_client()
-    return await client.refresh_token(refresh_token_value)
+    try:
+        return await _get_client().refresh_token(refresh_token_value)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 @mcp.tool()
@@ -179,8 +221,10 @@ async def introspect_token(token: str) -> dict:
     Args:
         token: The access or refresh token to introspect
     """
-    client = _get_client()
-    return await client.introspect_token(token)
+    try:
+        return await _get_client().introspect_token(token)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 @mcp.tool()
@@ -193,8 +237,10 @@ async def revoke_token(token: str) -> dict:
     Args:
         token: The token to revoke
     """
-    client = _get_client()
-    return await client.revoke_token(token)
+    try:
+        return await _get_client().revoke_token(token)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 # ---------------------------------------------------------------------------
@@ -210,30 +256,35 @@ async def create_credential(
 ) -> dict:
     """Issue a new API key for an agent.
 
-    The raw key is returned ONCE in the response — save it immediately.
-    It cannot be retrieved later; only the key prefix is stored.
+    Returns credential fields (id, prefix, agent_id, scopes, …) with
+    raw_key at the top level. The raw_key is shown ONCE — save it immediately.
 
     Args:
         agent_id: UUID of the agent to issue the key for
         access_token: Bearer token for authentication
         scopes: Optional scope restrictions for the new key
     """
-    client = _get_client()
-    return await client.create_credential(agent_id, auth=access_token, scopes=scopes)
+    try:
+        return await _get_client().create_credential(agent_id, auth=access_token, scopes=scopes)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 @mcp.tool()
 async def rotate_credential(credential_id: str, access_token: str) -> dict:
     """Rotate an API key — revokes old key and issues a new one.
 
-    The new raw key is returned ONCE. The old key is immediately invalid.
+    Returns the new credential fields (id, prefix, …) with raw_key and
+    old_credential_id at the top level. The raw_key is shown ONCE.
 
     Args:
         credential_id: UUID of the credential to rotate
         access_token: Bearer token for authentication
     """
-    client = _get_client()
-    return await client.rotate_credential(credential_id, auth=access_token)
+    try:
+        return await _get_client().rotate_credential(credential_id, auth=access_token)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 @mcp.tool()
@@ -244,8 +295,10 @@ async def revoke_credential(credential_id: str, access_token: str) -> dict:
         credential_id: UUID of the credential to revoke
         access_token: Bearer token for authentication
     """
-    client = _get_client()
-    return await client.revoke_credential(credential_id, auth=access_token)
+    try:
+        return await _get_client().revoke_credential(credential_id, auth=access_token)
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 # ---------------------------------------------------------------------------
@@ -274,14 +327,16 @@ async def create_delegation(
         max_chain_depth: How many times the delegate can re-delegate (default 3)
         expires_in_hours: Optional expiry in hours from now
     """
-    client = _get_client()
-    return await client.create_delegation(
-        delegate_agent_id=delegate_agent_id,
-        scopes=scopes,
-        auth=access_token,
-        max_chain_depth=max_chain_depth,
-        expires_in_hours=expires_in_hours,
-    )
+    try:
+        return await _get_client().create_delegation(
+            delegate_agent_id=delegate_agent_id,
+            scopes=scopes,
+            auth=access_token,
+            max_chain_depth=max_chain_depth,
+            expires_in_hours=expires_in_hours,
+        )
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 # ---------------------------------------------------------------------------
@@ -307,13 +362,15 @@ async def check_permission(
         resource: The resource path (e.g. "/api/v1/credentials")
         access_token: Bearer token for authentication
     """
-    client = _get_client()
-    return await client.check_permission(
-        agent_id=agent_id,
-        action=action,
-        resource=resource,
-        auth=access_token,
-    )
+    try:
+        return await _get_client().check_permission(
+            agent_id=agent_id,
+            action=action,
+            resource=resource,
+            auth=access_token,
+        )
+    except httpx.HTTPStatusError as e:
+        return _http_error(e)
 
 
 # ---------------------------------------------------------------------------
