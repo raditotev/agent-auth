@@ -38,9 +38,7 @@ class IdentityService:
         stmt = select(Agent).where(Agent.parent_agent_id.is_(None), Agent.name == data.name)
         result = await self.session.execute(stmt)
         if result.scalar_one_or_none() is not None:
-            raise AlreadyExistsError(
-                f"A root agent with name '{data.name}' already exists"
-            )
+            raise AlreadyExistsError(f"A root agent with name '{data.name}' already exists")
 
         agent = Agent(
             parent_agent_id=None,
