@@ -16,6 +16,6 @@
     "All panels use LogQL queries targeting the Loki datasource",
     "Dashboard auto-loads in Grafana via provisioning configuration from task 6.3"
   ],
-  "completed": false,
+  "completed": true,
   "dependencies": ["6.3"]
 }

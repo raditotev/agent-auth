@@ -11,6 +11,6 @@
     "Access log uses the JSON format",
     "Promtail can parse the nginx JSON log output"
   ],
-  "completed": false,
+  "completed": true,
   "dependencies": []
 }

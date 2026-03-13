@@ -17,6 +17,6 @@
     "Named volumes for loki-data and grafana-data exist",
     "All monitoring services have restart policies and health checks where applicable"
   ],
-  "completed": false,
+  "completed": true,
   "dependencies": []
 }

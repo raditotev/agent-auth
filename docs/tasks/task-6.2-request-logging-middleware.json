@@ -17,6 +17,6 @@
     "Tests verify 404 noise filtering logic",
     "Tests verify request_id propagation"
   ],
-  "completed": false,
+  "completed": true,
   "dependencies": ["6.1"]
 }
