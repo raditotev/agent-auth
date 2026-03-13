@@ -83,8 +83,48 @@ async def db_session(db_engine: Any) -> AsyncGenerator[AsyncSession, None]:
         await session.rollback()
 
 
+@pytest_asyncio.fixture
+async def auth_agent(db_session: AsyncSession) -> Agent:
+    """Root agent used to authenticate the test HTTP client."""
+    agent = Agent(
+        parent_agent_id=None,
+        name="test-client-auth-agent",
+        agent_type=AgentType.TOOL,
+        description="Auto-created agent for test client authentication",
+        trust_level=TrustLevel.ROOT,
+        status=AgentStatus.ACTIVE,
+        max_child_depth=5,
+        agent_metadata={},
+    )
+    db_session.add(agent)
+    await db_session.flush()
+    await db_session.refresh(agent)
+    return agent
+
+
+@pytest_asyncio.fixture
+async def auth_child_agent(db_session: AsyncSession, auth_agent: Agent) -> Agent:
+    """A child agent under auth_agent — useful for credential ownership tests."""
+    agent = Agent(
+        parent_agent_id=auth_agent.id,
+        name="test-auth-child-agent",
+        agent_type=AgentType.ASSISTANT,
+        description="Child of auth agent",
+        trust_level=TrustLevel.DELEGATED,
+        status=AgentStatus.ACTIVE,
+        max_child_depth=4,
+        agent_metadata={},
+    )
+    db_session.add(agent)
+    await db_session.flush()
+    await db_session.refresh(agent)
+    return agent
+
+
 @pytest_asyncio.fixture(scope="function")
-async def client(db_engine: Any, db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+async def client(
+    db_engine: Any, db_session: AsyncSession, auth_agent: Agent
+) -> AsyncGenerator[AsyncClient, None]:
     """Create a test HTTP client with database session override and agent authentication."""
     import agentauth.core.database as db_module
     from sqlalchemy.ext.asyncio import async_sessionmaker as _async_sessionmaker
@@ -98,26 +138,16 @@ async def client(db_engine: Any, db_session: AsyncSession) -> AsyncGenerator[Asy
     original_session_maker = db_module.async_session_maker
     db_module.async_session_maker = test_session_maker
 
-    # Create a root agent + credential for default authentication
-    auth_agent = Agent(
-        parent_agent_id=None,
-        name="test-client-auth-agent",
-        agent_type=AgentType.TOOL,
-        description="Auto-created agent for test client authentication",
-        trust_level=TrustLevel.ROOT,
-        status=AgentStatus.ACTIVE,
-        max_child_depth=5,
-        agent_metadata={},
-    )
-    db_session.add(auth_agent)
-    await db_session.flush()
-
     credential_service = CredentialService(db_session)
     _, api_key = await credential_service.create_credential(
         agent_id=auth_agent.id,
         credential_type=CredentialType.API_KEY,
-        scopes=["agents.read", "agents.write", "credentials.read", "credentials.write",
-                "delegations.read", "delegations.write", "audit.read"],
+        scopes=[
+            "agents.read", "agents.write", "credentials.read", "credentials.write",
+            "delegations.read", "delegations.write", "audit.read",
+            # admin.agents.list grants system-wide agent visibility (keeps existing tests passing)
+            "admin.agents.list",
+        ],
     )
     # Commit so the auth middleware's independent session can see the credential
     await db_session.commit()

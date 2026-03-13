@@ -4,9 +4,11 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentauth.core.database import DbSession
 from agentauth.core.exceptions import CredentialError, NotFoundError
+from agentauth.models.audit import ActorType, EventOutcome
 from agentauth.schemas.credential import (
     CredentialCreate,
     CredentialCreateResponse,
@@ -15,11 +17,47 @@ from agentauth.schemas.credential import (
     CredentialResponse,
     CredentialRotateResponse,
 )
+from agentauth.services.audit import AuditService
 from agentauth.services.credential import CredentialService
+from agentauth.services.identity import IdentityService
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
+
+
+async def _check_credential_authority(
+    caller_id: UUID,
+    target_agent_id: UUID,
+    session: AsyncSession,
+) -> None:
+    """
+    Verify the caller has authority over the target agent for credential operations.
+
+    Authority is granted only through the trust hierarchy (parent-child).
+    Delegation relationships do NOT grant credential management authority.
+
+    Raises:
+        HTTPException 403 with RFC 7807 detail if authorisation fails.
+    """
+    identity_service = IdentityService(session)
+    subtree_ids = await identity_service.get_subtree_agent_ids(caller_id)
+    if target_agent_id not in subtree_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "type": "https://agentauth.dev/problems/credential-authority-denied",
+                "title": "Credential Authority Denied",
+                "status": 403,
+                "detail": (
+                    "You do not have authority to manage credentials for this agent. "
+                    "Only the agent itself, its parent, or an ancestor in the same "
+                    "trust hierarchy may manage credentials."
+                ),
+                "instance": "/api/v1/credentials",
+            },
+            headers={"Content-Type": "application/problem+json"},
+        )
 
 
 @router.post(
@@ -42,9 +80,31 @@ async def create_credential(
 
     The raw API key is only returned once. Store it securely.
     """
+    caller_id: UUID | None = getattr(request.state, "agent_id", None)
+
+    if caller_id is not None:
+        try:
+            await _check_credential_authority(caller_id, credential_data.agent_id, session)
+        except HTTPException:
+            audit = AuditService(session)
+            await audit.record_event(
+                event_type="credential.creation_denied",
+                action="create",
+                outcome=EventOutcome.DENIED,
+                actor_type=ActorType.AGENT,
+                target_type="credential",
+                actor_id=caller_id,
+                target_id=credential_data.agent_id,
+                metadata={
+                    "target_agent_id": str(credential_data.agent_id),
+                    "reason": "caller_outside_trust_hierarchy",
+                },
+            )
+            await session.commit()
+            raise
+
     try:
         service = CredentialService(session)
-        actor_id = getattr(request.state, "agent_id", None)
 
         credential, raw_key = await service.create_credential(
             agent_id=credential_data.agent_id,
@@ -52,7 +112,7 @@ async def create_credential(
             scopes=credential_data.scopes,
             expires_at=credential_data.expires_at,
             metadata=credential_data.credential_metadata,
-            actor_id=actor_id,
+            actor_id=caller_id,
         )
 
         return CredentialCreateResponse(
@@ -179,13 +239,25 @@ async def rotate_credential(
 
     Old key is immediately revoked. New key is returned ONCE.
     """
-    try:
-        service = CredentialService(session)
-        actor_id = getattr(request.state, "agent_id", None)
+    caller_id: UUID | None = getattr(request.state, "agent_id", None)
+    service = CredentialService(session)
 
+    # Fetch credential first for ownership check and 404 handling
+    try:
+        credential = await service.get_credential(credential_id)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+
+    if caller_id is not None:
+        await _check_credential_authority(caller_id, credential.agent_id, session)
+
+    try:
         old_cred, new_cred, raw_key = await service.rotate_credential(
             credential_id=credential_id,
-            actor_id=actor_id,
+            actor_id=caller_id,
         )
 
         return CredentialRotateResponse(
@@ -227,13 +299,25 @@ async def revoke_credential(
 
     This action is irreversible. The credential cannot be used after revocation.
     """
-    try:
-        service = CredentialService(session)
-        actor_id = getattr(request.state, "agent_id", None)
+    caller_id: UUID | None = getattr(request.state, "agent_id", None)
+    service = CredentialService(session)
 
+    # Fetch credential first for ownership check and 404 handling
+    try:
+        credential = await service.get_credential(credential_id)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+
+    if caller_id is not None:
+        await _check_credential_authority(caller_id, credential.agent_id, session)
+
+    try:
         credential = await service.revoke_credential(
             credential_id=credential_id,
-            actor_id=actor_id,
+            actor_id=caller_id,
         )
 
         return CredentialDetailResponse(

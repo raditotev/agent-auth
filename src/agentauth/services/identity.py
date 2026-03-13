@@ -4,9 +4,11 @@ from uuid import UUID
 
 import structlog
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from agentauth.core.exceptions import AlreadyExistsError
 from agentauth.models.agent import Agent, AgentStatus, TrustLevel
 from agentauth.schemas.agent import AgentBootstrapCreate, AgentCreate, AgentUpdate
 
@@ -28,7 +30,18 @@ class IdentityService:
         - parent_agent_id = None
         - trust_level = ROOT
         - No parent validation needed
+
+        Raises:
+            AlreadyExistsError: If a root agent with the same name already exists.
         """
+        # Application-level duplicate check (fast path before hitting DB constraint)
+        stmt = select(Agent).where(Agent.parent_agent_id.is_(None), Agent.name == data.name)
+        result = await self.session.execute(stmt)
+        if result.scalar_one_or_none() is not None:
+            raise AlreadyExistsError(
+                f"A root agent with name '{data.name}' already exists"
+            )
+
         agent = Agent(
             parent_agent_id=None,
             name=data.name,
@@ -42,9 +55,18 @@ class IdentityService:
             agent_metadata=data.agent_metadata or {},
         )
 
-        self.session.add(agent)
-        await self.session.flush()
-        await self.session.refresh(agent)
+        try:
+            async with self.session.begin_nested():
+                self.session.add(agent)
+                await self.session.flush()
+                await self.session.refresh(agent)
+        except IntegrityError as exc:
+            err_str = str(exc.orig).lower() if exc.orig else str(exc).lower()
+            if "uq_agents_root_name" in err_str or "unique" in err_str:
+                raise AlreadyExistsError(
+                    f"A root agent with name '{data.name}' already exists"
+                ) from exc
+            raise
 
         logger.info(
             "Root agent created",
@@ -80,7 +102,7 @@ class IdentityService:
         result = await self.session.execute(stmt)
         existing = result.scalar_one_or_none()
         if existing:
-            raise ValueError(
+            raise AlreadyExistsError(
                 f"Agent with name '{data.name}' already exists under parent {data.parent_agent_id}"
             )
 
@@ -130,9 +152,18 @@ class IdentityService:
             agent_metadata=data.agent_metadata or {},
         )
 
-        self.session.add(agent)
-        await self.session.flush()
-        await self.session.refresh(agent)
+        try:
+            async with self.session.begin_nested():
+                self.session.add(agent)
+                await self.session.flush()
+                await self.session.refresh(agent)
+        except IntegrityError as exc:
+            err_str = str(exc.orig).lower() if exc.orig else str(exc).lower()
+            if "uq_agents_child_name" in err_str or "unique" in err_str:
+                raise AlreadyExistsError(
+                    f"Agent with name '{data.name}' already exists under parent {data.parent_agent_id}"
+                ) from exc
+            raise
 
         logger.info(
             "Child agent created",
@@ -167,6 +198,54 @@ class IdentityService:
             SELECT id FROM subtree
         """)
         result = await self.session.execute(sql, {"root_id": root_id})
+        return [row[0] for row in result.fetchall()]
+
+    async def get_visible_agent_ids(self, agent_id: UUID) -> list[UUID]:
+        """
+        Return all agent IDs visible to the given agent.
+
+        Visibility includes:
+        1. The agent itself and all its descendants (subtree).
+        2. All agents in active forward delegation chains (agents this agent delegated to,
+           transitively).
+        3. All agents in active backward delegation chains (agents that delegated to this
+           agent, transitively).
+
+        This uses a single SQL query with multiple recursive CTEs for efficiency.
+        """
+        sql = text("""
+            WITH RECURSIVE
+            subtree AS (
+                SELECT id FROM agents WHERE id = :agent_id
+                UNION ALL
+                SELECT a.id FROM agents a
+                INNER JOIN subtree s ON a.parent_agent_id = s.id
+            ),
+            forward_delegations AS (
+                SELECT id FROM agents WHERE id = :agent_id
+                UNION ALL
+                SELECT d.delegate_agent_id AS id
+                FROM delegations d
+                INNER JOIN forward_delegations fd ON d.delegator_agent_id = fd.id
+                WHERE d.revoked_at IS NULL
+                AND (d.expires_at IS NULL OR d.expires_at > now())
+            ),
+            backward_delegations AS (
+                SELECT id FROM agents WHERE id = :agent_id
+                UNION ALL
+                SELECT d.delegator_agent_id AS id
+                FROM delegations d
+                INNER JOIN backward_delegations bd ON d.delegate_agent_id = bd.id
+                WHERE d.revoked_at IS NULL
+                AND (d.expires_at IS NULL OR d.expires_at > now())
+            )
+            SELECT id FROM subtree
+            UNION
+            SELECT id FROM forward_delegations
+            UNION
+            SELECT id FROM backward_delegations
+        """)
+        result = await self.session.execute(sql, {"agent_id": agent_id})
         return [row[0] for row in result.fetchall()]
 
     async def list_agents(

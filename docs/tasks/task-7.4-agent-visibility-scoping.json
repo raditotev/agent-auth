@@ -1,0 +1,28 @@
+{
+  "id": "7.4",
+  "phase": "Phase 7 - Security Hardening II",
+  "title": "Restrict Agent Visibility Based on Relationship",
+  "description": "The list_agents endpoint currently scopes results to the caller's subtree for non-root agents, but root agents see ALL registered agents system-wide. During MCP smoke testing, test-bot (a root autonomous agent) listed all 13 agents including agents from unrelated trust hierarchies (postman-test-agent, debug-agent, shape-probe, etc.) that it has no operational relationship with.\n\nThis is a reconnaissance risk: a compromised root agent token exposes the full directory of all agents — names, IDs, types, trust levels, and creation timestamps. Agent names and types reveal system architecture, and timing data reveals deployment patterns.\n\nImplement relationship-based visibility:\n1. An agent can always see itself.\n2. An agent can see its direct children and all descendants (subtree — already implemented for non-root).\n3. An agent can see agents it has active delegations with (as delegator or delegate).\n4. An agent can see agents it has active delegation chains through (transitive delegation peers).\n5. Root agents follow the same rules — being root does NOT grant global visibility.\n6. Introduce a new scope 'admin.agents.list' that explicitly grants system-wide agent listing. Only agents with this scope can list all agents.\n7. The get_agent endpoint (single agent by ID) must also enforce the same visibility rules — an agent cannot fetch details of an agent it cannot see in the list.\n\nThe same visibility filter must be applied to the get_agent endpoint, not just list_agents.\n\nNote: This changes the existing behavior where root agents see everything. The migration path should be documented — existing root agents that need global visibility should be granted the 'admin.agents.list' scope.",
+  "validation": [
+    "Root agents without admin.agents.list scope see only their subtree and delegation peers",
+    "Root agents with admin.agents.list scope see all agents (backward-compatible opt-in)",
+    "Non-root agents see themselves, their subtree, and delegation peers",
+    "Delegation peers include both direct and transitive delegation chain members",
+    "get_agent returns 404 (not 403) for agents outside caller's visibility",
+    "list_agents returns only visible agents with correct total count",
+    "admin.agents.list scope added to scope registry",
+    "Migration documentation explains how to grant existing root agents global visibility",
+    "Tests verify root agent without admin scope cannot see unrelated agents",
+    "Tests verify root agent with admin scope sees all agents",
+    "Tests verify delegation peers are visible to both parties",
+    "Tests verify get_agent returns 404 for invisible agent",
+    "Tests verify agent count in response meta reflects filtered total",
+    "Performance: visibility query does not degrade with large agent counts (uses indexed joins)"
+  ],
+  "completed": true,
+  "dependencies": [
+    "1.3",
+    "3.1",
+    "3.5"
+  ]
+}

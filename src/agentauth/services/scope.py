@@ -39,6 +39,7 @@ DEFAULT_SCOPES = [
     ("email.read", "Read emails", "email"),
     # Admin
     ("admin.full", "Full administrative access", "admin"),
+    ("admin.agents.list", "List all agents system-wide (bypasses subtree scoping)", "admin"),
     # General API access
     ("api.read", "General read access", "api"),
     ("api.write", "General write access", "api"),

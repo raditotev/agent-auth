@@ -1,0 +1,25 @@
+{
+  "id": "7.2",
+  "phase": "Phase 7 - Security Hardening II",
+  "title": "Cascading Token Revocation Verification and Hardening",
+  "description": "The token revocation service (services/token.py) implements cascading revocation via a Redis Lua script that should revoke both the access token and its paired refresh token atomically. However, during MCP smoke testing, an access token was revoked and confirmed inactive via introspection, but the refresh token was not tested — and the system explicitly told the user 'You can still use the refresh token to obtain a new access token if needed', suggesting the cascade may not be working as intended or the pairing metadata may not be stored correctly in all code paths.\n\nThis task requires:\n1. Audit all token issuance code paths (quickstart, client_credentials grant, refresh_token grant, agent_delegation grant) to verify that token pair metadata (token_pair:access:{jti} and token_pair:refresh:{jti}) is written to Redis in every path.\n2. Add explicit integration tests that: (a) issue tokens via each grant type, (b) revoke the access token, (c) verify the refresh token is also inactive via introspection, (d) verify the revoked refresh token cannot be used to obtain a new access token.\n3. Add the reverse test: revoke a refresh token and verify the paired access token is also revoked.\n4. Add a test for the edge case where token pair metadata is missing from Redis (e.g., Redis was flushed) — revocation of one token should still succeed without error, even if cascade cannot find the pair.\n5. If any code path is found to NOT write pair metadata, fix it.",
+  "validation": [
+    "All token issuance paths write token_pair metadata to Redis",
+    "Quickstart endpoint writes token pair metadata",
+    "Client credentials grant writes token pair metadata",
+    "Refresh token grant writes token pair metadata for new token pair",
+    "Agent delegation grant writes token pair metadata",
+    "Integration test: revoke access token -> refresh token is inactive",
+    "Integration test: revoke access token -> refresh token cannot mint new tokens",
+    "Integration test: revoke refresh token -> access token is inactive",
+    "Integration test: revoke with missing pair metadata does not error",
+    "Integration test: introspect both tokens after revoking one confirms both inactive",
+    "All tests run against real Redis (not mocked)"
+  ],
+  "completed": true,
+  "dependencies": [
+    "2.4",
+    "2.5",
+    "2.6"
+  ]
+}

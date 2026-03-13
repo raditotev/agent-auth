@@ -15,12 +15,14 @@ from agentauth.services.credential import CredentialService
 class TestCredentialAPI:
     """Integration tests for credential endpoints."""
 
-    async def test_create_credential_success(self, client: AsyncClient, root_agent: Agent) -> None:
-        """Test POST /api/v1/credentials creates a credential."""
+    async def test_create_credential_success(
+        self, client: AsyncClient, auth_agent: Agent
+    ) -> None:
+        """Test POST /api/v1/credentials creates a credential for caller's own agent."""
         response = await client.post(
             "/api/v1/credentials",
             json={
-                "agent_id": str(root_agent.id),
+                "agent_id": str(auth_agent.id),
                 "type": "api_key",
                 "scopes": ["read", "write"],
             },
@@ -36,7 +38,7 @@ class TestCredentialAPI:
 
         # Check credential data
         credential = data["credential"]
-        assert credential["agent_id"] == str(root_agent.id)
+        assert credential["agent_id"] == str(auth_agent.id)
         assert credential["type"] == "api_key"
         assert credential["scopes"] == ["read", "write"]
         assert len(credential["prefix"]) == 8
@@ -49,7 +51,7 @@ class TestCredentialAPI:
         assert raw_key.startswith(credential["prefix"])
 
     async def test_create_credential_with_expiration(
-        self, client: AsyncClient, root_agent: Agent
+        self, client: AsyncClient, auth_agent: Agent
     ) -> None:
         """Test creating credential with expiration time."""
         expires_at = (datetime.now(UTC) + timedelta(days=30)).isoformat()
@@ -57,7 +59,7 @@ class TestCredentialAPI:
         response = await client.post(
             "/api/v1/credentials",
             json={
-                "agent_id": str(root_agent.id),
+                "agent_id": str(auth_agent.id),
                 "type": "api_key",
                 "expires_at": expires_at,
             },
@@ -68,13 +70,13 @@ class TestCredentialAPI:
         assert data["credential"]["expires_at"] is not None
 
     async def test_create_bootstrap_credential(
-        self, client: AsyncClient, root_agent: Agent
+        self, client: AsyncClient, auth_agent: Agent
     ) -> None:
         """Test creating bootstrap credential for self-registration."""
         response = await client.post(
             "/api/v1/credentials",
             json={
-                "agent_id": str(root_agent.id),
+                "agent_id": str(auth_agent.id),
                 "type": "bootstrap",
             },
         )
@@ -84,13 +86,13 @@ class TestCredentialAPI:
         assert data["credential"]["type"] == "bootstrap"
 
     async def test_create_credential_with_metadata(
-        self, client: AsyncClient, root_agent: Agent
+        self, client: AsyncClient, auth_agent: Agent
     ) -> None:
         """Test creating credential with metadata."""
         response = await client.post(
             "/api/v1/credentials",
             json={
-                "agent_id": str(root_agent.id),
+                "agent_id": str(auth_agent.id),
                 "type": "api_key",
                 "metadata": {
                     "ip_allowlist": ["192.168.1.0/24"],
@@ -198,11 +200,11 @@ class TestCredentialAPI:
         assert "detail" in response.json()
 
     async def test_revoke_credential_success(
-        self, client: AsyncClient, db_session: AsyncSession, root_agent: Agent
+        self, client: AsyncClient, db_session: AsyncSession, auth_agent: Agent
     ) -> None:
         """Test DELETE /api/v1/credentials/{id} revokes credential."""
         service = CredentialService(db_session)
-        credential, raw_key = await service.create_credential(agent_id=root_agent.id)
+        credential, raw_key = await service.create_credential(agent_id=auth_agent.id)
 
         # Revoke
         response = await client.delete(f"/api/v1/credentials/{str(credential.id)}")
@@ -217,11 +219,11 @@ class TestCredentialAPI:
         assert verified is None
 
     async def test_revoke_credential_already_revoked(
-        self, client: AsyncClient, db_session: AsyncSession, root_agent: Agent
+        self, client: AsyncClient, db_session: AsyncSession, auth_agent: Agent
     ) -> None:
         """Test revoking an already revoked credential."""
         service = CredentialService(db_session)
-        credential, _ = await service.create_credential(agent_id=root_agent.id)
+        credential, _ = await service.create_credential(agent_id=auth_agent.id)
 
         # Revoke once
         await service.revoke_credential(credential.id)
@@ -233,12 +235,12 @@ class TestCredentialAPI:
         assert "already revoked" in response.json()["detail"].lower()
 
     async def test_rotate_credential_success(
-        self, client: AsyncClient, db_session: AsyncSession, root_agent: Agent
+        self, client: AsyncClient, db_session: AsyncSession, auth_agent: Agent
     ) -> None:
         """Test POST /api/v1/credentials/{id}/rotate rotates credential."""
         service = CredentialService(db_session)
         old_credential, old_key = await service.create_credential(
-            agent_id=root_agent.id,
+            agent_id=auth_agent.id,
             scopes=["read", "write"],
         )
 
@@ -259,7 +261,7 @@ class TestCredentialAPI:
 
         # New credential should be valid
         assert data["new_credential"]["is_valid"] is True
-        assert data["new_credential"]["agent_id"] == str(root_agent.id)
+        assert data["new_credential"]["agent_id"] == str(auth_agent.id)
         assert data["new_credential"]["scopes"] == ["read", "write"]
 
         # New key should be different
@@ -284,30 +286,34 @@ class TestCredentialAPI:
         assert response.status_code == 404
 
     async def test_credential_api_raw_key_never_stored(
-        self, client: AsyncClient, db_session: AsyncSession, root_agent: Agent
+        self, client: AsyncClient, db_session: AsyncSession, auth_agent: Agent
     ) -> None:
         """Test that raw API key is never stored in database."""
         # Create credential via API
         response = await client.post(
             "/api/v1/credentials",
             json={
-                "agent_id": str(root_agent.id),
+                "agent_id": str(auth_agent.id),
                 "type": "api_key",
             },
         )
 
         assert response.status_code == 201
-        raw_key = response.json()["raw_key"]
+        data = response.json()
+        raw_key = data["raw_key"]
+        credential_id = data["credential"]["id"]
 
         # Verify raw key is not in database
         service = CredentialService(db_session)
-        credentials = await service.list_credentials(agent_id=root_agent.id)
+        credentials = await service.list_credentials(agent_id=auth_agent.id)
 
         for cred in credentials:
-            # Raw key should not be in hash
+            # Raw key should not be stored as-is in any credential's hash
             assert raw_key not in cred.hash
-            # Only prefix should match
-            assert raw_key.startswith(cred.prefix)
+
+        # The newly created credential's prefix must match the raw key
+        new_cred = next(c for c in credentials if str(c.id) == credential_id)
+        assert raw_key.startswith(new_cred.prefix)
 
     async def test_credential_api_pagination(
         self, client: AsyncClient, db_session: AsyncSession, root_agent: Agent
@@ -334,7 +340,7 @@ class TestCredentialAPI:
         assert data["meta"]["offset"] == 5
 
     async def test_credential_audit_events_created(
-        self, client: AsyncClient, db_session: AsyncSession, root_agent: Agent
+        self, client: AsyncClient, db_session: AsyncSession, auth_agent: Agent
     ) -> None:
         """Test that audit events are created for credential operations."""
         from agentauth.services.audit import AuditService
@@ -345,7 +351,7 @@ class TestCredentialAPI:
         response = await client.post(
             "/api/v1/credentials",
             json={
-                "agent_id": str(root_agent.id),
+                "agent_id": str(auth_agent.id),
                 "type": "api_key",
             },
         )

@@ -9,8 +9,10 @@ from sqlalchemy import (
     TIMESTAMP,
     Enum,
     ForeignKey,
+    Index,
     String,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -55,6 +57,23 @@ class Agent(BaseModel):
     """
 
     __tablename__ = "agents"
+    __table_args__ = (
+        # Unique root agent names (WHERE parent_agent_id IS NULL)
+        Index(
+            "uq_agents_root_name",
+            "name",
+            unique=True,
+            postgresql_where=text("parent_agent_id IS NULL"),
+        ),
+        # Unique child agent names per parent (WHERE parent_agent_id IS NOT NULL)
+        Index(
+            "uq_agents_child_name",
+            "parent_agent_id",
+            "name",
+            unique=True,
+            postgresql_where=text("parent_agent_id IS NOT NULL"),
+        ),
+    )
 
     # Self-referencing parent relationship (nullable for root agents)
     parent_agent_id: Mapped[UUID | None] = mapped_column(

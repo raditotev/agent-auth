@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 
 from agentauth.config import settings
 from agentauth.core.database import DbSession
+from agentauth.core.exceptions import AlreadyExistsError
 from agentauth.core.rate_limit import check_rate_limit
 from agentauth.models.agent import Agent, AgentStatus
 from agentauth.schemas.agent import (
@@ -205,6 +206,18 @@ async def quickstart(
             token=token_response,
         )
 
+    except AlreadyExistsError as e:
+        logger.warning("Quickstart failed - name conflict", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "type": "https://agentauth.dev/problems/agent-name-conflict",
+                "title": "Agent Name Conflict",
+                "status": 409,
+                "detail": str(e),
+                "instance": "/api/v1/agents/quickstart",
+            },
+        ) from e
     except ValueError as e:
         logger.warning("Quickstart failed", error=str(e))
         raise HTTPException(
@@ -246,6 +259,18 @@ async def bootstrap_root_agent(
                 "is_root": True,
             },
         )
+    except AlreadyExistsError as e:
+        logger.warning("Failed to create root agent - name conflict", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "type": "https://agentauth.dev/problems/agent-name-conflict",
+                "title": "Agent Name Conflict",
+                "status": 409,
+                "detail": str(e),
+                "instance": "/api/v1/agents/bootstrap",
+            },
+        ) from e
     except ValueError as e:
         logger.warning("Failed to create root agent", error=str(e))
         raise HTTPException(
@@ -283,6 +308,18 @@ async def create_agent(
                 "parent_agent_id": str(agent.parent_agent_id),
             },
         )
+    except AlreadyExistsError as e:
+        logger.warning("Failed to create agent - name conflict", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "type": "https://agentauth.dev/problems/agent-name-conflict",
+                "title": "Agent Name Conflict",
+                "status": 409,
+                "detail": str(e),
+                "instance": "/api/v1/agents",
+            },
+        ) from e
     except ValueError as e:
         logger.warning("Failed to create agent", error=str(e))
         raise HTTPException(
@@ -318,7 +355,7 @@ async def list_agents(
     limit: Annotated[int, Query(ge=1, le=100, description="Maximum results to return")] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset for pagination")] = 0,
 ) -> AgentListResponse:
-    """List agents scoped to the caller's subtree."""
+    """List agents scoped to the caller's visibility set."""
     try:
         caller = getattr(request.state, "agent", None)
         if caller is None:
@@ -326,16 +363,17 @@ async def list_agents(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required",
             )
-        subtree_ids: list[UUID] | None = None
-        if not caller.is_root():
-            subtree_ids = await identity_service.get_subtree_agent_ids(caller.id)
+        agent_scopes: list[str] = getattr(request.state, "agent_scopes", [])
+        visible_ids: list[UUID] | None = None
+        if "admin.agents.list" not in agent_scopes:
+            visible_ids = await identity_service.get_visible_agent_ids(caller.id)
 
         agents = await identity_service.list_agents(
             parent_agent_id=parent_agent_id,
             status=status_filter,
             limit=limit,
             offset=offset,
-            subtree_ids=subtree_ids,
+            subtree_ids=visible_ids,
         )
         return AgentListResponse(
             data=[agent_to_response(agent) for agent in agents],
@@ -347,6 +385,8 @@ async def list_agents(
                 "status_filter": status_filter.value if status_filter else None,
             },
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error listing agents", error=str(e))
         raise HTTPException(
@@ -364,6 +404,7 @@ async def list_agents(
 async def get_agent(
     agent_id: UUID,
     identity_service: Annotated[IdentityService, Depends(get_identity_service)],
+    request: Request,
 ) -> AgentDetailResponse:
     """Get agent by ID."""
     agent = await identity_service.get_agent_by_id(agent_id)
@@ -372,6 +413,18 @@ async def get_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    # Enforce visibility — return 404 (not 403) for hidden agents
+    caller = getattr(request.state, "agent", None)
+    if caller is not None:
+        agent_scopes: list[str] = getattr(request.state, "agent_scopes", [])
+        if "admin.agents.list" not in agent_scopes:
+            visible_ids = await identity_service.get_visible_agent_ids(caller.id)
+            if agent_id not in visible_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Agent {agent_id} not found",
+                )
 
     return AgentDetailResponse(
         data=agent_to_response(agent),

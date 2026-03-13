@@ -1,0 +1,25 @@
+{
+  "id": "7.3",
+  "phase": "Phase 7 - Security Hardening II",
+  "title": "Enforce Unique Agent Names Within Trust Scope",
+  "description": "Agent names have no global uniqueness constraint. The bootstrap endpoint (root agent creation) performs no duplicate name check at all. The child agent creation path checks uniqueness only per parent. This was confirmed during MCP smoke testing where the agent list contained two agents named 'mcp-live-final' with different IDs, and the system allowed creating arbitrarily many root agents with the same name.\n\nDuplicate agent names create multiple security and operational risks:\n- Audit log ambiguity: logs referencing agent names cannot be reliably attributed.\n- Social engineering: a malicious agent registered with the same name as a trusted agent could exploit name-based trust assumptions in downstream systems.\n- Operational confusion: administrators cannot distinguish agents by name in list views.\n\nImplement the following:\n1. Add a database-level unique constraint on (name, parent_agent_id) where parent_agent_id IS NULL represents root agents. This ensures root agent names are globally unique and child agent names are unique per parent.\n2. Use a partial unique index: CREATE UNIQUE INDEX uq_agents_root_name ON agents (name) WHERE parent_agent_id IS NULL for root agents.\n3. Keep the existing per-parent uniqueness for child agents but enforce it at the database level too: CREATE UNIQUE INDEX uq_agents_child_name ON agents (parent_agent_id, name) WHERE parent_agent_id IS NOT NULL.\n4. Add an Alembic migration with both upgrade and downgrade.\n5. Update the bootstrap and create_child_agent service methods to catch IntegrityError and return a clear 409 Conflict response with RFC 7807 problem detail.\n6. Update the quickstart endpoint to handle the conflict gracefully.\n7. Handle the existing duplicate data: the migration should document that existing duplicates must be resolved manually before applying, or include a pre-check that warns about duplicates.",
+  "validation": [
+    "Database has partial unique index on root agent names (parent_agent_id IS NULL)",
+    "Database has unique index on (parent_agent_id, name) for child agents",
+    "Alembic migration includes both upgrade and downgrade",
+    "Migration includes pre-check or documentation for existing duplicate names",
+    "Bootstrap endpoint returns 409 Conflict for duplicate root agent name",
+    "Quickstart endpoint returns 409 Conflict for duplicate root agent name",
+    "Create child agent returns 409 Conflict for duplicate name under same parent",
+    "Error response follows RFC 7807 problem detail format",
+    "Same name allowed under different parents (sibling uniqueness not required across parents)",
+    "Tests verify duplicate root agent creation is rejected",
+    "Tests verify duplicate child agent under same parent is rejected",
+    "Tests verify same name under different parents succeeds",
+    "Tests verify 409 response body contains informative error message"
+  ],
+  "completed": true,
+  "dependencies": [
+    "1.3"
+  ]
+}

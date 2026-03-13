@@ -352,11 +352,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         # Verify credentials and load agent
         try:
             if api_key:
-                agent = await self._verify_api_key(api_key)
+                auth_result = await self._verify_api_key(api_key)
             else:
-                agent = await self._verify_bearer_token(bearer_token)  # type: ignore[arg-type]
+                auth_result = await self._verify_bearer_token(bearer_token)  # type: ignore[arg-type]
 
-            if not agent:
+            if not auth_result:
                 logger.warning(
                     "authentication_failed",
                     reason="invalid_api_key",
@@ -368,6 +368,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     detail="The provided API key is invalid, expired, or revoked",
                     instance=request.url.path,
                 )
+
+            agent, agent_scopes = auth_result
 
             # Check if agent is active
             if not agent.is_active():
@@ -384,10 +386,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     instance=request.url.path,
                 )
 
-            # Inject authenticated agent into request state
+            # Inject authenticated agent and scopes into request state
             request.state.agent = agent
             request.state.agent_id = agent.id
             request.state.trust_level = agent.trust_level
+            request.state.agent_scopes = agent_scopes
 
             logger.info(
                 "authentication_success",
@@ -415,15 +418,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-    async def _verify_api_key(self, api_key: str) -> Agent | None:
+    async def _verify_api_key(self, api_key: str) -> tuple[Agent, list[str]] | None:
         """
-        Verify API key and return associated agent.
+        Verify API key and return associated agent with its credential scopes.
 
         Args:
             api_key: Raw API key from header
 
         Returns:
-            Agent if valid, None otherwise
+            (Agent, scopes) tuple if valid, None otherwise
         """
         # Create a new database session for this request
         # Use injected session maker for testing, or get the default one
@@ -444,17 +447,17 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             # we get the current state
             await session.refresh(credential, ["agent"])
 
-            return credential.agent
+            return credential.agent, credential.scopes or []
 
-    async def _verify_bearer_token(self, token: str) -> Agent | None:
+    async def _verify_bearer_token(self, token: str) -> tuple[Agent, list[str]] | None:
         """
-        Validate a Bearer JWT and return the associated agent.
+        Validate a Bearer JWT and return the associated agent with its token scopes.
 
         Args:
             token: Raw Bearer token string
 
         Returns:
-            Agent if token is valid and agent is found, None otherwise
+            (Agent, scopes) tuple if token is valid and agent is found, None otherwise
         """
         from sqlalchemy import select
 
@@ -477,7 +480,10 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 return None
 
             agent_result = await session.execute(select(Agent).where(Agent.id == agent_id))
-            return agent_result.scalar_one_or_none()
+            agent = agent_result.scalar_one_or_none()
+            if agent is None:
+                return None
+            return agent, result.claims.scopes or []
 
     def _authentication_error_response(
         self,

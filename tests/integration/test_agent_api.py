@@ -90,7 +90,7 @@ class TestAgentCreation:
         client: AsyncClient,
         root_agent: Agent,
     ) -> None:
-        """Test creating child agent with duplicate name under same parent."""
+        """Test creating child agent with duplicate name under same parent returns 409."""
         data = {
             "parent_agent_id": str(root_agent.id),
             "name": "duplicate-name",
@@ -101,10 +101,12 @@ class TestAgentCreation:
         response = await client.post("/api/v1/agents", json=data)
         assert response.status_code == 201
 
-        # Try to create another with same name
+        # Try to create another with same name — expect 409 Conflict
         response = await client.post("/api/v1/agents", json=data)
-        assert response.status_code == 400
-        assert "already exists" in response.json()["detail"]
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["status"] == 409
+        assert "already exists" in detail["detail"]
 
     @pytest.mark.asyncio
     async def test_create_child_agent_nonexistent_parent(
