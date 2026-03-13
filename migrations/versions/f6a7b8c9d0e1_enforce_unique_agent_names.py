@@ -32,6 +32,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add partial unique indexes for agent name uniqueness within trust scope."""
+    # De-duplicate root agent names: keep oldest (lowest uuid7), rename the rest
+    op.execute(
+        """
+        WITH duplicates AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS rn
+            FROM agents
+            WHERE parent_agent_id IS NULL
+        )
+        UPDATE agents
+        SET name = agents.name || '_dup_' || SUBSTRING(agents.id::text, 1, 8)
+        FROM duplicates
+        WHERE agents.id = duplicates.id AND duplicates.rn > 1
+        """
+    )
+    # De-duplicate child agent names per parent: keep oldest, rename the rest
+    op.execute(
+        """
+        WITH duplicates AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (PARTITION BY parent_agent_id, name ORDER BY id) AS rn
+            FROM agents
+            WHERE parent_agent_id IS NOT NULL
+        )
+        UPDATE agents
+        SET name = agents.name || '_dup_' || SUBSTRING(agents.id::text, 1, 8)
+        FROM duplicates
+        WHERE agents.id = duplicates.id AND duplicates.rn > 1
+        """
+    )
     # Unique root agent names (parent_agent_id IS NULL)
     op.execute(
         """
