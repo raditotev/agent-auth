@@ -89,13 +89,25 @@ class AuthorizationService:
                 reason=f"Allowed by policy '{allow_match.name}' (id={allow_match.id})",
             )
         else:
-            result = PolicyEvaluateResponse(
-                allowed=False,
-                effect="deny",
-                matching_policy_id=None,
-                matching_policy_name=None,
-                reason="No matching policy found — default deny",
-            )
+            # No explicit policy matched — check active delegations as implicit allows
+            delegation_match = await self._check_active_delegations(agent_id, action, resource)
+            if delegation_match is not None:
+                result = PolicyEvaluateResponse(
+                    allowed=True,
+                    effect="allow",
+                    matching_policy_id=None,
+                    matching_policy_name=None,
+                    delegation_id=delegation_match.id,
+                    reason=f"Allowed by active delegation {delegation_match.id}",
+                )
+            else:
+                result = PolicyEvaluateResponse(
+                    allowed=False,
+                    effect="deny",
+                    matching_policy_id=None,
+                    matching_policy_name=None,
+                    reason="No matching policy found — default deny",
+                )
 
         logger.info(
             "Policy evaluation complete",
@@ -278,9 +290,10 @@ class AuthorizationService:
             from agentauth.core.redis import get_redis_client
 
             redis_client = get_redis_client()
-            version = await redis_client.get(f"policy_version:{agent_id}") or "0"
+            policy_version = await redis_client.get(f"policy_version:{agent_id}") or "0"
+            delegation_version = await redis_client.get(f"delegation_version:{agent_id}") or "0"
             ctx_hash = self._context_hash(context) if context else "none"
-            cache_key = f"authz:v{version}:{agent_id}:{action}:{resource}:{ctx_hash}"
+            cache_key = f"authz:v{policy_version}d{delegation_version}:{agent_id}:{action}:{resource}:{ctx_hash}"
             cached_json = await redis_client.get_json(cache_key)
             if cached_json is not None:
                 logger.debug("Authorization decision cache hit", cache_key=cache_key)
@@ -302,9 +315,10 @@ class AuthorizationService:
             from agentauth.core.redis import get_redis_client
 
             redis_client = get_redis_client()
-            version = await redis_client.get(f"policy_version:{agent_id}") or "0"
+            policy_version = await redis_client.get(f"policy_version:{agent_id}") or "0"
+            delegation_version = await redis_client.get(f"delegation_version:{agent_id}") or "0"
             ctx_hash = self._context_hash(context) if context else "none"
-            cache_key = f"authz:v{version}:{agent_id}:{action}:{resource}:{ctx_hash}"
+            cache_key = f"authz:v{policy_version}d{delegation_version}:{agent_id}:{action}:{resource}:{ctx_hash}"
             await redis_client.set_json(
                 cache_key,
                 result.model_dump(mode="json"),
@@ -312,3 +326,76 @@ class AuthorizationService:
             )
         except Exception as e:
             logger.debug("Authorization cache write failed", error=str(e))
+
+    @staticmethod
+    async def increment_delegation_version(agent_id: UUID) -> None:
+        """Increment the delegation version counter for cache invalidation."""
+        try:
+            from agentauth.core.redis import get_redis_client
+
+            redis_client = get_redis_client()
+            await redis_client.incr(f"delegation_version:{agent_id}")
+        except Exception as e:
+            logger.debug("Failed to increment delegation version", error=str(e))
+
+    async def _check_active_delegations(
+        self,
+        agent_id: UUID,
+        action: str,
+        resource: str,
+    ) -> "Delegation | None":
+        """Check active delegations for an implicit allow.
+
+        Returns the first active delegation whose scopes cover the requested
+        action+resource pair, or None if no match.
+        """
+        from sqlalchemy import select
+
+        from agentauth.models.delegation import Delegation
+
+        result = await self.session.execute(
+            select(Delegation).where(
+                Delegation.delegate_agent_id == agent_id,
+                Delegation.revoked_at.is_(None),
+            )
+        )
+        delegations = [d for d in result.scalars().all() if d.is_active()]
+
+        for delegation in delegations:
+            for scope in delegation.scopes:
+                if self._scope_matches_action_resource(scope, action, resource):
+                    return delegation
+
+        return None
+
+    @staticmethod
+    def _scope_matches_action_resource(scope: str, action: str, resource: str) -> bool:
+        """Check if a delegation scope covers the given action+resource.
+
+        Convention: scope format is '{resource_name}.{action}' where:
+        - resource_name maps to /api/v1/{resource_name}
+        - action is compared directly (or '*' matches any action)
+
+        Examples:
+        - 'agents.read' covers action='read', resource='/api/v1/agents'
+        - 'agents.*' covers any action on '/api/v1/agents'
+        - 'admin.full' covers any action on '/api/v1/admin'
+        """
+        if not scope or "." not in scope:
+            return False
+
+        # Split on last dot: 'agents.read' -> ('agents', 'read')
+        # 'admin.agents.read' -> ('admin.agents', 'read')
+        parts = scope.rsplit(".", 1)
+        resource_part, action_part = parts[0], parts[1]
+
+        # Check action match
+        if action_part != action and action_part != "*":
+            return False
+
+        # Map resource_part to expected API prefix
+        # 'agents' -> '/api/v1/agents'
+        # 'admin.agents' -> '/api/v1/admin/agents'
+        expected_prefix = "/api/v1/" + resource_part.replace(".", "/")
+
+        return resource == expected_prefix or resource.startswith(expected_prefix + "/")

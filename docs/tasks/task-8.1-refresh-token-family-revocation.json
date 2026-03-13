@@ -1,0 +1,22 @@
+{
+  "id": "8.1",
+  "phase": "Phase 8 - MCP Test Fixes",
+  "title": "Refresh Token Replay Must Revoke Entire Token Family",
+  "description": "During MCP smoke testing (Test 3.11), refresh token replay detection correctly returns HTTP 401 with error 'Refresh token reuse detected — entire token family has been revoked'. However, the access token (token-E) that was issued by the legitimately-consumed refresh token remains active=true when introspected. The expected behavior per the test plan is that replay detection invalidates ALL tokens in the family, including the most recently issued access token.\n\nThe issue is in the refresh token replay detection logic. When a previously-consumed refresh token is replayed:\n1. The server correctly detects the reuse and returns 401.\n2. The server claims the 'entire token family has been revoked'.\n3. But the access token minted from the legitimate (first) use of that refresh token is NOT actually added to the revocation blocklist.\n\nThis task requires:\n1. Audit the refresh token grant handler in the token service to find where family revocation is triggered on replay detection.\n2. Ensure that when replay is detected, ALL access tokens and refresh tokens in the family are added to the Redis blocklist — not just the replayed token.\n3. The family should be tracked by a family_id (or equivalent) that links all tokens descended from the same initial authentication. When any refresh token in the family is replayed, every token sharing that family_id must be revoked.\n4. Add integration tests that: (a) authenticate to get token-D/refresh-D, (b) use refresh-D to get token-E/refresh-E (succeeds), (c) replay refresh-D a second time (returns 401), (d) introspect token-E — must be active=false, (e) introspect refresh-E — must be active=false.",
+  "recommended_agent": "Security Engineer",
+  "validation": [
+    "Refresh token replay detection returns 401 with family revocation message",
+    "After replay detection, the access token issued from the legitimate refresh returns active=false on introspection",
+    "After replay detection, the refresh token issued from the legitimate refresh returns active=false on introspection",
+    "Token family tracking links all tokens from the same initial authentication",
+    "Integration test: replay refresh-D -> token-E is inactive",
+    "Integration test: replay refresh-D -> refresh-E is inactive",
+    "Integration test: replay refresh-D -> refresh-E cannot mint new tokens",
+    "All tests run against real Redis (not mocked)"
+  ],
+  "completed": true,
+  "dependencies": [
+    "2.6",
+    "7.2"
+  ]
+}

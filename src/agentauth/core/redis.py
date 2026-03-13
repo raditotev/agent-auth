@@ -1,7 +1,7 @@
 """Redis client for caching and rate limiting."""
 
 import json
-from typing import Any, cast
+from typing import Any, Set, cast
 
 import redis.asyncio as redis
 import structlog
@@ -267,6 +267,44 @@ class RedisClient:
         except Exception as e:
             logger.warning("Redis SCAN failed", pattern=pattern, error=str(e))
             return []
+
+    async def sadd(self, key: str, *values: str) -> int:
+        """Add one or more members to a set.
+
+        Args:
+            key: Set key
+            *values: Members to add
+
+        Returns:
+            Number of members added (not counting already-present members).
+        """
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        try:
+            return int(await self._client.sadd(key, *values))
+        except Exception as e:
+            logger.warning("Redis SADD failed", key=key, error=str(e))
+            return 0
+
+    async def smembers(self, key: str) -> Set[str]:
+        """Return all members of a set.
+
+        Args:
+            key: Set key
+
+        Returns:
+            Set of member strings (empty set if key does not exist).
+        """
+        if self._client is None:
+            await self.connect()
+        assert self._client is not None
+        try:
+            result = await self._client.smembers(key)
+            return cast(Set[str], result)
+        except Exception as e:
+            logger.warning("Redis SMEMBERS failed", key=key, error=str(e))
+            return set()  # type: ignore[return-value]
 
     async def delete_pattern(self, pattern: str) -> int:
         """Delete all keys matching a glob pattern. Returns count of deleted keys.

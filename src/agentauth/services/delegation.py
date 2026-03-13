@@ -106,10 +106,28 @@ class DelegationService:
             if escalated:
                 raise ValueError(f"Scope escalation: delegator does not hold scopes {escalated}")
 
+        # Enforce max_chain_depth constraint from incoming delegation chain
+        # If delegator has incoming delegations, cap max_chain_depth to their constraint
+        if chain_depth > 0:
+            # Delegator is not a root agent — find the effective max from incoming delegations
+            incoming_result = await self.session.execute(
+                select(Delegation).where(
+                    Delegation.delegate_agent_id == delegator_agent_id,
+                    Delegation.revoked_at.is_(None),
+                )
+            )
+            active_incoming = [d for d in incoming_result.scalars().all() if d.is_active()]
+            if active_incoming:
+                ancestor_max_chain_depth = min(d.max_chain_depth for d in active_incoming)
+                # Cap the requested max_chain_depth to the ancestor constraint
+                max_chain_depth = min(max_chain_depth, ancestor_max_chain_depth)
+
         # Validate chain depth
         new_chain_depth = chain_depth + 1
         if new_chain_depth > max_chain_depth:
-            raise ValueError(f"Chain depth {new_chain_depth} exceeds maximum {max_chain_depth}")
+            raise ValueError(
+                f"chain_depth_exceeded: Chain depth {new_chain_depth} exceeds maximum {max_chain_depth}"
+            )
 
         delegation = Delegation(
             delegator_agent_id=delegator_agent_id,
@@ -123,6 +141,11 @@ class DelegationService:
         self.session.add(delegation)
         await self.session.commit()
         await self.session.refresh(delegation)
+
+        # Invalidate authorization cache for the delegate agent
+        from agentauth.services.authorization import AuthorizationService
+
+        await AuthorizationService.increment_delegation_version(delegate_agent_id)
 
         logger.info(
             "Delegation created",
@@ -268,6 +291,11 @@ class DelegationService:
 
         # Invalidate chain cache for the revoked delegation
         await self._invalidate_chain_cache(delegation_id)
+
+        # Invalidate authorization cache for delegate agents
+        from agentauth.services.authorization import AuthorizationService
+
+        await AuthorizationService.increment_delegation_version(delegation.delegate_agent_id)
 
         logger.info(
             "Delegation revoked",

@@ -1,0 +1,21 @@
+{
+  "id": "8.2",
+  "phase": "Phase 8 - MCP Test Fixes",
+  "title": "check_permission Must Honour Active Delegations",
+  "description": "During MCP smoke testing (Test 6.5), the check_permission endpoint returned allowed=false with reason 'No matching policy found — default deny' for a scope that had been explicitly delegated between two agents. Agent A delegated agents.read to Agent B, and the delegation was confirmed active (Agent B appeared in Agent A's list_agents). However, check_permission for Agent B with action=read on resource=/api/v1/agents returned denied.\n\nThe policy evaluation engine (services/authorization.py) currently only checks explicit Policy objects stored in the database. It does not consider active delegations as a source of permissions. This means delegated scopes are only enforced at the API middleware level (token scopes) but not visible to the check_permission dry-run endpoint.\n\nThis task requires:\n1. Modify the policy evaluation engine's evaluate() method to also check active delegations when no explicit policy matches.\n2. When evaluating permissions for an agent, query active delegations where the agent is either the delegator or delegate.\n3. Map the delegation's scopes to the requested action+resource pair (e.g., scope 'agents.read' should allow action 'read' on resource '/api/v1/agents').\n4. Delegations should act as implicit allow policies with lower priority than explicit policies — explicit deny policies must still override.\n5. Add integration tests that: (a) create a delegation granting agents.read from Agent A to Agent B, (b) call check_permission for Agent B — must return allowed=true, (c) revoke the delegation, (d) call check_permission again — must return allowed=false.",
+  "recommended_agent": "Backend Architect",
+  "validation": [
+    "check_permission returns allowed=true for a scope covered by an active delegation",
+    "check_permission returns allowed=false after the delegation is revoked",
+    "Explicit deny policies still override delegation-based allows",
+    "Response includes delegation_id when permission is granted via delegation",
+    "Integration test: delegate agents.read -> check_permission returns allowed",
+    "Integration test: revoke delegation -> check_permission returns denied",
+    "Integration test: explicit deny policy overrides delegation allow"
+  ],
+  "completed": true,
+  "dependencies": [
+    "3.3",
+    "3.5"
+  ]
+}

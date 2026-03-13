@@ -41,6 +41,7 @@ class TokenService:
         expires_in_minutes: int | None = None,
         delegation_chain: list[UUID] | None = None,
         algorithm: KeyAlgorithm = KeyAlgorithm.RS256,
+        family_id: str | None = None,
     ) -> TokenResponse:
         """
         Mint a new JWT token for an agent.
@@ -91,6 +92,12 @@ class TokenService:
         # Generate unique JWT ID
         jti = self._generate_jti()
 
+        # For access tokens, determine family_id before building claims so it
+        # can be embedded in the signed JWT payload.
+        if token_type == "access":
+            if family_id is None:
+                family_id = self._generate_jti()
+
         # Build token claims
         token_scopes = scopes or []
         token_audience = audience or self.issuer
@@ -113,6 +120,10 @@ class TokenService:
             else None,
             "token_type": token_type,
         }
+
+        # Embed family_id in the access token claims before signing
+        if token_type == "access" and family_id is not None:
+            claims["family_id"] = family_id
 
         # Sign the token
         access_token = await self._sign_jwt(claims, signing_key)
@@ -142,6 +153,8 @@ class TokenService:
                 "scopes": token_scopes,
                 # Link to access token for cascading revocation
                 "access_token_jti": jti,
+                # Link to token family for full-family revocation on replay
+                "family_id": family_id,
             }
             refresh_token = await self._sign_jwt(refresh_claims, signing_key)
 
@@ -154,6 +167,13 @@ class TokenService:
             await redis_client.set(
                 f"token_pair:refresh:{refresh_jti}", jti, ex=refresh_expires_in_seconds
             )
+
+            # Track both JTIs in the family members set
+            family_key = f"family_members:{family_id}"
+            await redis_client.sadd(family_key, jti)
+            await redis_client.sadd(family_key, refresh_jti)
+            # Set TTL to refresh token lifetime
+            await redis_client.expire(family_key, refresh_expires_in_seconds)
 
         logger.info(
             "Token minted successfully",
@@ -701,6 +721,7 @@ class TokenService:
         agent_id_str = unverified.get("sub")
         access_token_jti = unverified.get("access_token_jti")
         scopes: list[str] = unverified.get("scopes", [])
+        family_id: str | None = unverified.get("family_id")
 
         if token_type != "refresh":
             raise TokenError(
@@ -719,16 +740,34 @@ class TokenService:
                 refresh_jti=refresh_jti,
                 agent_id=agent_id_str,
                 access_token_jti=access_token_jti,
+                family_id=family_id,
             )
-            # Revoke the paired access token to protect the entire family
-            if access_token_jti:
+            # Revoke entire token family via family_members set
+            if family_id:
+                family_key = f"family_members:{family_id}"
+                member_jtis = await redis_client.smembers(family_key)
+                if member_jtis:
+                    max_ttl = settings.refresh_token_expire_days * 24 * 60 * 60
+                    for member_jti_str in member_jtis:
+                        already_revoked = await redis_client.exists(f"revoked:{member_jti_str}")
+                        if not already_revoked:
+                            await redis_client.set(f"revoked:{member_jti_str}", "1", ex=max_ttl)
+                            # Invalidate introspection cache
+                            cache_mapping = await redis_client.get(f"jti_to_cache:{member_jti_str}")
+                            if cache_mapping:
+                                await redis_client.delete(cache_mapping)
+                                await redis_client.delete(f"jti_to_cache:{member_jti_str}")
+                    logger.info(
+                        "Revoked entire token family",
+                        family_id=family_id,
+                        count=len(member_jtis),
+                    )
+            elif access_token_jti:
+                # Fallback for tokens without family_id (backward compat)
                 already_revoked = await redis_client.exists(f"revoked:{access_token_jti}")
                 if not already_revoked:
                     max_ttl = settings.access_token_expire_minutes * 60
                     await redis_client.set(f"revoked:{access_token_jti}", "1", ex=max_ttl)
-                    logger.info(
-                        "Revoked access token in compromised family", access_jti=access_token_jti
-                    )
 
             raise TokenError(
                 "Refresh token reuse detected — entire token family has been revoked",
@@ -770,6 +809,7 @@ class TokenService:
             agent=agent,
             scopes=scopes,
             token_type="access",
+            family_id=family_id,
         )
 
         logger.info(

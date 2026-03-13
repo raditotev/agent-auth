@@ -309,3 +309,181 @@ class TestDelegationChainTraversal:
         await db_session.refresh(d2)
         assert d1.revoked_at is not None
         assert d2.revoked_at is not None
+
+    async def test_chain_depth_constraint_from_ancestor_enforced(
+        self,
+        db_session: AsyncSession,
+        root_agent: Agent,
+        child_agent: Agent,
+    ) -> None:
+        """A->B (max=2), B->C succeeds, C->D fails — ancestor max_chain_depth enforced."""
+        # Create C (grandchild) and D (great-grandchild)
+        agent_c = Agent(
+            parent_agent_id=child_agent.id,
+            name="chain-depth-test-agent-c",
+            agent_type=AgentType.TOOL,
+            trust_level=TrustLevel.DELEGATED,
+            status=AgentStatus.ACTIVE,
+            max_child_depth=0,
+        )
+        db_session.add(agent_c)
+        await db_session.commit()
+        await db_session.refresh(agent_c)
+
+        agent_d = Agent(
+            parent_agent_id=agent_c.id,
+            name="chain-depth-test-agent-d",
+            agent_type=AgentType.TOOL,
+            trust_level=TrustLevel.DELEGATED,
+            status=AgentStatus.ACTIVE,
+            max_child_depth=0,
+        )
+        db_session.add(agent_d)
+        await db_session.commit()
+        await db_session.refresh(agent_d)
+
+        delegation_service = DelegationService(db_session)
+
+        # A → B with max_chain_depth=2 (allows depth 1 and 2, rejects depth 3)
+        await delegation_service.create_delegation(
+            delegator_agent_id=root_agent.id,
+            delegate_agent_id=child_agent.id,
+            scopes=["agents.read"],
+            max_chain_depth=2,
+        )
+        await db_session.commit()
+
+        # B → C with DEFAULT max_chain_depth=3 (should be capped to 2 by ancestor)
+        d2 = await delegation_service.create_delegation(
+            delegator_agent_id=child_agent.id,
+            delegate_agent_id=agent_c.id,
+            scopes=["agents.read"],
+            max_chain_depth=3,  # Would allow depth 3, but ancestor caps it to 2
+        )
+        await db_session.commit()
+
+        # B→C succeeds and its max_chain_depth is capped at ancestor's 2
+        assert d2.max_chain_depth == 2
+
+        # C → D should FAIL: chain_depth=3 > ancestor constraint=2
+        with pytest.raises(ValueError, match="chain_depth_exceeded|Chain depth.*exceeds maximum"):
+            await delegation_service.create_delegation(
+                delegator_agent_id=agent_c.id,
+                delegate_agent_id=agent_d.id,
+                scopes=["agents.read"],
+                max_chain_depth=3,  # Default — but should be blocked by ancestor
+            )
+
+    async def test_chain_depth_max_zero_blocks_all_redelegation(
+        self,
+        db_session: AsyncSession,
+        root_agent: Agent,
+        child_agent: Agent,
+    ) -> None:
+        """A->B (max=1), B->C fails immediately — max_chain_depth=1 means no re-delegation."""
+        agent_c = Agent(
+            parent_agent_id=child_agent.id,
+            name="chain-depth-zero-test-agent-c",
+            agent_type=AgentType.TOOL,
+            trust_level=TrustLevel.DELEGATED,
+            status=AgentStatus.ACTIVE,
+            max_child_depth=0,
+        )
+        db_session.add(agent_c)
+        await db_session.commit()
+        await db_session.refresh(agent_c)
+
+        delegation_service = DelegationService(db_session)
+
+        # A → B with max_chain_depth=1 (only depth 1 allowed, B itself)
+        await delegation_service.create_delegation(
+            delegator_agent_id=root_agent.id,
+            delegate_agent_id=child_agent.id,
+            scopes=["agents.read"],
+            max_chain_depth=1,
+        )
+        await db_session.commit()
+
+        # B → C should FAIL: chain_depth=2 > max=1
+        with pytest.raises(ValueError, match="chain_depth_exceeded|Chain depth.*exceeds maximum"):
+            await delegation_service.create_delegation(
+                delegator_agent_id=child_agent.id,
+                delegate_agent_id=agent_c.id,
+                scopes=["agents.read"],
+                max_chain_depth=3,  # Default — should be blocked
+            )
+
+    async def test_chain_depth_three_levels_allowed(
+        self,
+        db_session: AsyncSession,
+        root_agent: Agent,
+        child_agent: Agent,
+    ) -> None:
+        """A->B (max=3), B->C->D all succeed, D->E fails."""
+        agent_c = Agent(
+            parent_agent_id=child_agent.id,
+            name="3-level-test-agent-c",
+            agent_type=AgentType.TOOL,
+            trust_level=TrustLevel.DELEGATED,
+            status=AgentStatus.ACTIVE,
+            max_child_depth=0,
+        )
+        agent_d = Agent(
+            parent_agent_id=None,
+            name="3-level-test-agent-d",
+            agent_type=AgentType.TOOL,
+            trust_level=TrustLevel.DELEGATED,
+            status=AgentStatus.ACTIVE,
+            max_child_depth=0,
+        )
+        agent_e = Agent(
+            parent_agent_id=None,
+            name="3-level-test-agent-e",
+            agent_type=AgentType.TOOL,
+            trust_level=TrustLevel.DELEGATED,
+            status=AgentStatus.ACTIVE,
+            max_child_depth=0,
+        )
+        db_session.add_all([agent_c, agent_d, agent_e])
+        await db_session.commit()
+        await db_session.refresh(agent_c)
+        await db_session.refresh(agent_d)
+        await db_session.refresh(agent_e)
+
+        delegation_service = DelegationService(db_session)
+
+        # A → B with max=3
+        await delegation_service.create_delegation(
+            delegator_agent_id=root_agent.id,
+            delegate_agent_id=child_agent.id,
+            scopes=["agents.read"],
+            max_chain_depth=3,
+        )
+        await db_session.commit()
+
+        # B → C (depth 2, max 3) — succeeds
+        await delegation_service.create_delegation(
+            delegator_agent_id=child_agent.id,
+            delegate_agent_id=agent_c.id,
+            scopes=["agents.read"],
+            max_chain_depth=5,  # Will be capped to 3
+        )
+        await db_session.commit()
+
+        # C → D (depth 3, max 3) — succeeds
+        await delegation_service.create_delegation(
+            delegator_agent_id=agent_c.id,
+            delegate_agent_id=agent_d.id,
+            scopes=["agents.read"],
+            max_chain_depth=5,  # Will be capped to 3
+        )
+        await db_session.commit()
+
+        # D → E (depth 4 > max 3) — fails
+        with pytest.raises(ValueError, match="chain_depth_exceeded|Chain depth.*exceeds maximum"):
+            await delegation_service.create_delegation(
+                delegator_agent_id=agent_d.id,
+                delegate_agent_id=agent_e.id,
+                scopes=["agents.read"],
+                max_chain_depth=5,
+            )

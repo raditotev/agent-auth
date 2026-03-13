@@ -32,6 +32,9 @@ class TokenClaims(BaseModel):
     access_token_jti: str | None = Field(
         None, description="JTI of paired access token (refresh tokens only)"
     )
+    family_id: str | None = Field(
+        None, description="Token family ID — links all tokens from the same initial auth"
+    )
 
     model_config = {
         "json_schema_extra": {

@@ -92,4 +92,5 @@ class PolicyEvaluateResponse(BaseModel):
     effect: str
     matching_policy_id: UUID | None = None
     matching_policy_name: str | None = None
+    delegation_id: UUID | None = None
     reason: str

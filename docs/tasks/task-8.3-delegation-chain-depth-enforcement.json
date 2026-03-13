@@ -1,0 +1,22 @@
+{
+  "id": "8.3",
+  "phase": "Phase 8 - MCP Test Fixes",
+  "title": "Enforce max_chain_depth Across Delegation Chains",
+  "description": "During MCP smoke testing (Test 6.7), a delegation from Agent A to Agent B was created with max_chain_depth=1. Agent B then re-delegated to Agent C (expected to succeed at depth 1), and Agent C further re-delegated to Agent D. This third-level delegation should have been rejected because it exceeds the original max_chain_depth=1 constraint, but it succeeded with chain_depth=3 and max_chain_depth=3 (the default).\n\nThe root cause is that when a delegated agent (e.g., Agent B) creates a new delegation, the service does not look up the incoming delegation's max_chain_depth constraint. Instead it uses the agent's own default max_chain_depth (3). Each agent authenticates with its own root credentials, so the delegation chain constraint from the parent delegation is lost.\n\nThis task requires:\n1. When an agent creates a delegation, the service must check all active incoming delegations for the requested scopes to determine the effective max_chain_depth.\n2. The new delegation's chain_depth must be computed relative to the original delegation chain, not just the immediate parent.\n3. If the computed chain_depth would exceed the effective max_chain_depth from any ancestor delegation in the chain, the request must be rejected with an appropriate error (e.g., 400 with error 'chain_depth_exceeded').\n4. The max_chain_depth on a child delegation must be <= the remaining depth from the parent (i.e., parent.max_chain_depth - parent.chain_depth).\n5. Add integration tests that: (a) A delegates to B with max_chain_depth=1 and scopes=[agents.read], (b) B delegates to C with scopes=[agents.read] — succeeds (depth 1 of max 1), (c) C attempts to delegate to D with scopes=[agents.read] — rejected with chain depth exceeded error.",
+  "recommended_agent": "Security Engineer",
+  "validation": [
+    "Delegation creation checks incoming delegation chain for max_chain_depth constraints",
+    "New delegation chain_depth is computed relative to the full chain, not just immediate parent",
+    "Delegation is rejected when chain_depth would exceed ancestor's max_chain_depth",
+    "Error response is 400 with clear 'chain depth exceeded' message",
+    "max_chain_depth on child delegation is capped at remaining depth from parent",
+    "Integration test: A->B (max_depth=1), B->C succeeds, C->D rejected",
+    "Integration test: A->B (max_depth=2), B->C succeeds, C->D succeeds, D->E rejected",
+    "Integration test: A->B (max_depth=0), B->C rejected immediately"
+  ],
+  "completed": true,
+  "dependencies": [
+    "3.5",
+    "3.6"
+  ]
+}

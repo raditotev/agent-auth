@@ -138,6 +138,77 @@ class TestRefreshTokenFlow:
         is_revoked = await redis_client.exists(f"revoked:{access_jti}")
         assert is_revoked, "Access token must be revoked when token family is compromised"
 
+    async def test_replay_revokes_successor_access_token(
+        self,
+        db_session: AsyncSession,
+        root_agent: Agent,
+        signing_key_rsa: SigningKey,
+    ) -> None:
+        """On replay, the access token minted from the legitimate use is revoked (token-E inactive)."""
+        from agentauth.core.redis import get_redis_client
+        import jwt as pyjwt
+
+        token_service = TokenService(db_session)
+
+        # Mint initial pair (access-D / refresh-D)
+        initial = await token_service.mint_token(agent=root_agent, scopes=["api.read"])
+        assert initial.refresh_token is not None
+
+        # Legitimate use of refresh-D → mints token-E / refresh-E
+        rotated = await token_service.refresh_token_grant(initial.refresh_token)
+        assert rotated.access_token is not None
+        assert rotated.refresh_token is not None
+
+        # Extract JTIs of the successor tokens
+        access_e_claims = pyjwt.decode(rotated.access_token, options={"verify_signature": False})
+        refresh_e_claims = pyjwt.decode(rotated.refresh_token, options={"verify_signature": False})
+        access_e_jti = access_e_claims["jti"]
+        refresh_e_jti = refresh_e_claims["jti"]
+
+        # Replay refresh-D → should trigger full family revocation
+        with pytest.raises(TokenError, match="reuse detected"):
+            await token_service.refresh_token_grant(initial.refresh_token)
+
+        # token-E (access) must now be revoked
+        redis_client = get_redis_client()
+        assert await redis_client.exists(f"revoked:{access_e_jti}"), \
+            "token-E (access) must be revoked after family replay detection"
+
+        # refresh-E must also be revoked
+        assert await redis_client.exists(f"revoked:{refresh_e_jti}"), \
+            "refresh-E must be revoked after family replay detection"
+
+    async def test_replay_revokes_successor_tokens_introspection(
+        self,
+        db_session: AsyncSession,
+        root_agent: Agent,
+        signing_key_rsa: SigningKey,
+    ) -> None:
+        """After replay, introspecting token-E and refresh-E returns active=false."""
+        from agentauth.core.redis import get_redis_client
+        import jwt as pyjwt
+
+        token_service = TokenService(db_session)
+
+        # Mint initial pair
+        initial = await token_service.mint_token(agent=root_agent, scopes=["api.read"])
+        assert initial.refresh_token is not None
+
+        # Legitimate refresh → get token-E / refresh-E
+        rotated = await token_service.refresh_token_grant(initial.refresh_token)
+
+        # Replay → triggers family revocation
+        with pytest.raises(TokenError):
+            await token_service.refresh_token_grant(initial.refresh_token)
+
+        # Introspect token-E — must be active=false
+        result_e = await token_service.introspect_token(rotated.access_token, use_cache=False)
+        assert result_e["active"] is False, "token-E must be inactive after family revocation"
+
+        # Introspect refresh-E — must be active=false
+        result_re = await token_service.introspect_token(rotated.refresh_token, use_cache=False)
+        assert result_re["active"] is False, "refresh-E must be inactive after family revocation"
+
     async def test_invalid_refresh_token_rejected(
         self,
         db_session: AsyncSession,

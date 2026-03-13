@@ -163,7 +163,7 @@ class TestCacheVersioning:
         # Verify set_json was called with a versioned cache key
         set_json_call = mock_redis.set_json.call_args
         cache_key = set_json_call[0][0]
-        assert cache_key.startswith(f"authz:v3:{agent_id}:")
+        assert cache_key.startswith(f"authz:v3d3:{agent_id}:")
 
     @pytest.mark.asyncio
     async def test_version_change_bypasses_old_cache(self) -> None:
@@ -231,7 +231,7 @@ class TestCacheVersioning:
         # Cache key should use v0
         set_json_call = mock_redis.set_json.call_args
         cache_key = set_json_call[0][0]
-        assert cache_key.startswith(f"authz:v0:{agent_id}:")
+        assert cache_key.startswith(f"authz:v0d0:{agent_id}:")
 
     @pytest.mark.asyncio
     async def test_increment_policy_version_calls_redis_incr(self) -> None:
