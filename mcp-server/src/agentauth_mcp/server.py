@@ -9,7 +9,7 @@ the main AgentAuth FastAPI application. For local development or air-gapped
 environments, the server can also run standalone via stdio transport.
 
 Configuration via environment variables:
-    AGENTAUTH_URL     — Base URL of the AgentAuth service (required)
+    AGENTAUTH_URL     — Base URL of the AgentAuth service (falls back to ISSUER_URL)
     AGENTAUTH_API_KEY — Default API key for the authenticate tool (optional)
 """
 
@@ -32,10 +32,10 @@ _client: AgentAuthHTTPClient | None = None
 def _get_client() -> AgentAuthHTTPClient:
     global _client
     if _client is None:
-        base_url = os.environ.get("AGENTAUTH_URL", "")
+        base_url = os.environ.get("AGENTAUTH_URL") or os.environ.get("ISSUER_URL", "")
         if not base_url:
             raise RuntimeError(
-                "AGENTAUTH_URL environment variable is required. "
+                "AGENTAUTH_URL (or ISSUER_URL) environment variable is required. "
                 "Set it to the base URL of your AgentAuth service "
                 "(e.g. https://agentauth.radi.pro)."
             )

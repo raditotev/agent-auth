@@ -39,6 +39,7 @@ class TestGetClient:
     def test_get_client_raises_without_env_var(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("AGENTAUTH_URL", None)
+            os.environ.pop("ISSUER_URL", None)
             with pytest.raises(RuntimeError, match="AGENTAUTH_URL"):
                 server_module._get_client()
 
@@ -47,6 +48,18 @@ class TestGetClient:
             client = server_module._get_client()
             assert isinstance(client, AgentAuthHTTPClient)
             assert client.base_url == "http://example.com"
+
+    def test_get_client_falls_back_to_issuer_url(self) -> None:
+        with patch.dict(os.environ, {"ISSUER_URL": "http://issuer.example.com"}, clear=True):
+            client = server_module._get_client()
+            assert isinstance(client, AgentAuthHTTPClient)
+            assert client.base_url == "http://issuer.example.com"
+
+    def test_get_client_prefers_agentauth_url_over_issuer_url(self) -> None:
+        env = {"AGENTAUTH_URL": "http://explicit.com", "ISSUER_URL": "http://issuer.com"}
+        with patch.dict(os.environ, env):
+            client = server_module._get_client()
+            assert client.base_url == "http://explicit.com"
 
     def test_get_client_returns_singleton(self) -> None:
         with patch.dict(os.environ, {"AGENTAUTH_URL": "http://example.com"}):
