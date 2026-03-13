@@ -1,5 +1,6 @@
 """Redis client for caching and rate limiting."""
 
+import builtins
 import json
 from typing import Any, cast
 
@@ -282,12 +283,12 @@ class RedisClient:
             await self.connect()
         assert self._client is not None
         try:
-            return int(await self._client.sadd(key, *values))
+            return int(await self._client.sadd(key, *values))  # type: ignore[misc]
         except Exception as e:
             logger.warning("Redis SADD failed", key=key, error=str(e))
             return 0
 
-    async def smembers(self, key: str) -> set[str]:
+    async def smembers(self, key: str) -> builtins.set[str]:
         """Return all members of a set.
 
         Args:
@@ -300,11 +301,11 @@ class RedisClient:
             await self.connect()
         assert self._client is not None
         try:
-            result = await self._client.smembers(key)
+            result = await self._client.smembers(key)  # type: ignore[misc]
             return cast(set[str], result)
         except Exception as e:
             logger.warning("Redis SMEMBERS failed", key=key, error=str(e))
-            return set()  # type: ignore[return-value]
+            return set()
 
     async def delete_pattern(self, pattern: str) -> int:
         """Delete all keys matching a glob pattern. Returns count of deleted keys.
