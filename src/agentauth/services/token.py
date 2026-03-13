@@ -94,9 +94,8 @@ class TokenService:
 
         # For access tokens, determine family_id before building claims so it
         # can be embedded in the signed JWT payload.
-        if token_type == "access":
-            if family_id is None:
-                family_id = self._generate_jti()
+        if token_type == "access" and family_id is None:
+            family_id = self._generate_jti()
 
         # Build token claims
         token_scopes = scopes or []

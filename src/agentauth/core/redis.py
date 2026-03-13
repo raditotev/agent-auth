@@ -1,7 +1,7 @@
 """Redis client for caching and rate limiting."""
 
 import json
-from typing import Any, Set, cast
+from typing import Any, cast
 
 import redis.asyncio as redis
 import structlog
@@ -287,7 +287,7 @@ class RedisClient:
             logger.warning("Redis SADD failed", key=key, error=str(e))
             return 0
 
-    async def smembers(self, key: str) -> Set[str]:
+    async def smembers(self, key: str) -> set[str]:
         """Return all members of a set.
 
         Args:
@@ -301,7 +301,7 @@ class RedisClient:
         assert self._client is not None
         try:
             result = await self._client.smembers(key)
-            return cast(Set[str], result)
+            return cast(set[str], result)
         except Exception as e:
             logger.warning("Redis SMEMBERS failed", key=key, error=str(e))
             return set()  # type: ignore[return-value]

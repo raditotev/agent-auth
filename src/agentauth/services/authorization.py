@@ -1,7 +1,12 @@
 """Authorization service — policy evaluation engine."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from agentauth.models.delegation import Delegation
 
 import structlog
 from sqlalchemy import text
@@ -343,7 +348,7 @@ class AuthorizationService:
         agent_id: UUID,
         action: str,
         resource: str,
-    ) -> "Delegation | None":
+    ) -> Delegation | None:
         """Check active delegations for an implicit allow.
 
         Returns the first active delegation whose scopes cover the requested
