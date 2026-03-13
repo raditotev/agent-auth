@@ -323,20 +323,32 @@ async def _handle_client_credentials(
                 "allowed_scopes": allowed_scopes,
             },
         )
+        error_detail: dict = {
+            "error": "invalid_scope",
+            "error_description": "Requested scopes exceed credential's allowed scopes",
+        }
+        if not allowed_scopes:
+            error_detail["hint"] = (
+                "Quickstart credentials issue tokens with empty scopes. "
+                "To obtain a scoped token, first create a credential with the desired scopes "
+                "via POST /api/v1/credentials, then authenticate with that credential."
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "invalid_scope",
-                "error_description": "Requested scopes exceed credential's allowed scopes",
-            },
+            detail=error_detail,
         )
 
     # Mint tokens
     try:
+        expires_in_minutes: float | None = None
+        if credential.token_lifetime_seconds is not None:
+            expires_in_minutes = credential.token_lifetime_seconds / 60
+
         token_response = await token_service.mint_token(
             agent=agent,
             scopes=validated_scopes,
             token_type="access",
+            expires_in_minutes=expires_in_minutes,
         )
 
         # Record successful token issuance
@@ -429,6 +441,36 @@ async def _handle_refresh_token(
         await session.commit()
 
         logger.info("Token refresh successful")
+
+        # Emit token.refreshed webhook (fire-and-forget)
+        try:
+            import jwt as _jwt
+
+            from agentauth.tasks.webhooks import dispatch_event
+
+            unverified = _jwt.decode(
+                token_response.access_token, options={"verify_signature": False}
+            )
+            _agent_id = unverified.get("sub")
+            _family_id = unverified.get("family_id")
+            if _agent_id:
+                import asyncio
+
+                asyncio.create_task(  # noqa: RUF006
+                    dispatch_event(
+                        event_type="token.refreshed",
+                        payload={
+                            "event": "token.refreshed",
+                            "agent_id": _agent_id,
+                            "family_id": _family_id,
+                            "new_expires_at": token_response.expires_at.isoformat(),
+                        },
+                        agent_id=_agent_id,
+                    )
+                )
+        except Exception:
+            logger.warning("token_refreshed_webhook_failed", exc_info=True)
+
         return token_response
 
     except AuthenticationError as e:

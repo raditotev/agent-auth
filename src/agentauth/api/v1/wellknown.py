@@ -102,6 +102,18 @@ async def agent_configuration() -> JSONResponse:
         "service_documentation": f"{base}/docs",
         "agent_types_supported": ["orchestrator", "autonomous", "assistant", "tool"],
         "trust_levels_supported": ["root", "delegated", "ephemeral"],
+        "quickstart": {
+            "description": "Registers an agent and issues a root token with empty scopes. To obtain a scoped token, first create a credential with the desired scopes using the quickstart access_token, then authenticate with that credential.",
+            "scopes": [],
+            "next_steps": ["create_credential", "authenticate"],
+        },
+        "delegation": {
+            "depth_semantics": "absolute",
+            "depth_semantics_description": (
+                "max_chain_depth is the maximum absolute depth from the root delegation. "
+                "chain_depth_remaining shows how many further hops are permitted from the current delegate."
+            ),
+        },
     }
 
     return JSONResponse(

@@ -30,6 +30,12 @@ class CredentialCreate(BaseModel):
         alias="metadata",
         description="Flexible metadata (IP allowlist, usage notes, etc.)",
     )
+    token_lifetime_seconds: int | None = Field(
+        None,
+        ge=60,
+        le=86400,
+        description="Custom access token lifetime in seconds (60-86400). Defaults to server default of 900s.",
+    )
 
 
 class CredentialResponse(BaseModel):
@@ -48,6 +54,7 @@ class CredentialResponse(BaseModel):
         None,
         alias="metadata",
     )
+    token_lifetime_seconds: int | None = None
     created_at: datetime
     updated_at: datetime
     is_valid: bool = Field(..., description="Whether credential is currently valid")
@@ -71,6 +78,7 @@ class CredentialResponse(BaseModel):
             last_rotated_at=credential.last_rotated_at,
             revoked_at=credential.revoked_at,
             credential_metadata=credential.credential_metadata,
+            token_lifetime_seconds=credential.token_lifetime_seconds,
             created_at=credential.created_at,
             updated_at=credential.updated_at,
             is_valid=credential.is_valid(),

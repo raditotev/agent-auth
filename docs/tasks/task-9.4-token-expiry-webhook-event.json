@@ -1,0 +1,25 @@
+{
+  "id": "9.4",
+  "phase": "Phase 9 - Agent DX Improvements",
+  "title": "Emit Token Expiry Warning via Webhook and Response Header",
+  "description": "AI agents currently have no push signal when a token is approaching expiry. The `refresh_before` timestamp in `TokenResponse` requires the agent to implement its own timer or polling loop \u2014 a non-trivial orchestration burden that is error-prone and unnecessary if the service can proactively signal the agent.\n\nThis task adds two complementary expiry warning mechanisms:\n\n1. **`X-Token-Expires-In` response header**: On every authenticated API response, include a header with the remaining lifetime of the access token in seconds (e.g. `X-Token-Expires-In: 120`). When this value drops below 120 seconds, additionally include `X-Token-Refresh-Advised: true`. This allows an agent that processes response headers to detect approaching expiry without any clock management.\n\n2. **`token.expiring_soon` webhook event** (requires task 4.5): Emit a webhook event to the agent's registered webhook URL when its active token family has less than 120 seconds remaining. The event payload must include:\n   - `event: \"token.expiring_soon\"`\n   - `agent_id`\n   - `family_id` (so the agent can correlate to its current token)\n   - `expires_at` (ISO-8601)\n   - `refresh_before` (ISO-8601)\n   - `seconds_remaining` (integer)\n\n   The threshold (120 seconds) must be configurable via server environment variable `TOKEN_EXPIRY_WARNING_SECONDS` (default: 120).\n\n3. **`token.refreshed` webhook event**: Emit when a token family is successfully refreshed, so downstream agents that received the `expiring_soon` event know the situation has been resolved.\n\nNote: The webhook events require that the agent has a registered `homepage_url` or a dedicated webhook endpoint field. If no webhook URL is registered, only the response header mechanism applies.",
+  "recommended_agent": "Backend Architect",
+  "validation": [
+    "Every authenticated API response includes X-Token-Expires-In header with remaining seconds",
+    "X-Token-Refresh-Advised: true header is present when remaining lifetime < TOKEN_EXPIRY_WARNING_SECONDS",
+    "X-Token-Expires-In is not present on unauthenticated responses (401, discovery, JWKS)",
+    "token.expiring_soon webhook event is emitted when token family drops below threshold",
+    "Webhook payload includes event, agent_id, family_id, expires_at, refresh_before, seconds_remaining",
+    "token.refreshed webhook event is emitted after a successful refresh token grant",
+    "TOKEN_EXPIRY_WARNING_SECONDS env var controls the threshold (default 120)",
+    "No webhook is emitted if agent has no registered webhook URL",
+    "Integration test: authenticated request with token expiring in 60s returns X-Token-Refresh-Advised: true",
+    "Integration test: authenticated request with token expiring in 800s does NOT return X-Token-Refresh-Advised",
+    "Integration test: token.expiring_soon webhook fires within 5s of crossing the threshold"
+  ],
+  "completed": true,
+  "dependencies": [
+    "4.5",
+    "2.2"
+  ]
+}

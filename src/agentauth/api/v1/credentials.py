@@ -113,6 +113,7 @@ async def create_credential(
             expires_at=credential_data.expires_at,
             metadata=credential_data.credential_metadata,
             actor_id=caller_id,
+            token_lifetime_seconds=credential_data.token_lifetime_seconds,
         )
 
         return CredentialCreateResponse(

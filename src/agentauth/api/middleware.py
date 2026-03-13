@@ -1,8 +1,10 @@
 """FastAPI middleware for authentication and authorization."""
 
+import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -15,6 +17,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from agentauth.core.database import get_session_maker
 from agentauth.models.agent import Agent
+from agentauth.schemas.token import TokenClaims
 from agentauth.services.credential import CredentialService
 
 # Mapping of HTTP methods to authorization actions
@@ -369,7 +372,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     instance=request.url.path,
                 )
 
-            agent, agent_scopes = auth_result
+            agent, agent_scopes, token_claims = auth_result
 
             # Check if agent is active
             if not agent.is_active():
@@ -391,6 +394,10 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.agent_id = agent.id
             request.state.trust_level = agent.trust_level
             request.state.agent_scopes = agent_scopes
+            # Store JWT exp claim for expiry-warning headers (only set for Bearer tokens)
+            if token_claims is not None:
+                request.state.token_exp = token_claims.exp
+                request.state.token_family_id = token_claims.family_id
 
             logger.info(
                 "authentication_success",
@@ -416,9 +423,34 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         # Continue with request
         response = await call_next(request)
+
+        # Add token expiry headers and optionally emit webhook for Bearer JWT auth
+        token_exp = getattr(request.state, "token_exp", None)
+        if token_exp is not None:
+            remaining_seconds = max(0, int(token_exp - time.time()))
+            response.headers["X-Token-Expires-In"] = str(remaining_seconds)
+
+            from agentauth.config import settings
+
+            if remaining_seconds < settings.token_expiry_warning_seconds:
+                response.headers["X-Token-Refresh-Advised"] = "true"
+
+                # Fire-and-forget webhook for token.expiring_soon
+                agent = getattr(request.state, "agent", None)
+                family_id = getattr(request.state, "token_family_id", None)
+                if agent is not None and family_id is not None:
+                    asyncio.create_task(  # noqa: RUF006
+                        _emit_expiry_warning_webhook(
+                            agent_id=str(agent.id),
+                            family_id=family_id,
+                            exp_timestamp=token_exp,
+                            seconds_remaining=remaining_seconds,
+                        )
+                    )
+
         return response
 
-    async def _verify_api_key(self, api_key: str) -> tuple[Agent, list[str]] | None:
+    async def _verify_api_key(self, api_key: str) -> tuple[Agent, list[str], None] | None:
         """
         Verify API key and return associated agent with its credential scopes.
 
@@ -426,7 +458,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             api_key: Raw API key from header
 
         Returns:
-            (Agent, scopes) tuple if valid, None otherwise
+            (Agent, scopes, None) tuple if valid, None otherwise.
+            Third element is always None — API keys have no JWT exp claim.
         """
         # Create a new database session for this request
         # Use injected session maker for testing, or get the default one
@@ -447,9 +480,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             # we get the current state
             await session.refresh(credential, ["agent"])
 
-            return credential.agent, credential.scopes or []
+            return credential.agent, credential.scopes or [], None
 
-    async def _verify_bearer_token(self, token: str) -> tuple[Agent, list[str]] | None:
+    async def _verify_bearer_token(
+        self, token: str
+    ) -> tuple[Agent, list[str], TokenClaims | None] | None:
         """
         Validate a Bearer JWT and return the associated agent with its token scopes.
 
@@ -457,7 +492,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             token: Raw Bearer token string
 
         Returns:
-            (Agent, scopes) tuple if token is valid and agent is found, None otherwise
+            (Agent, scopes, TokenClaims) tuple if token is valid and agent is found,
+            None otherwise.
         """
         from sqlalchemy import select
 
@@ -483,7 +519,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             agent = agent_result.scalar_one_or_none()
             if agent is None:
                 return None
-            return agent, result.claims.scopes or []
+            return agent, result.claims.scopes or [], result.claims
 
     def _authentication_error_response(
         self,
@@ -522,4 +558,57 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 "Content-Type": "application/problem+json",
                 "WWW-Authenticate": 'ApiKey realm="AgentAuth"',
             },
+        )
+
+
+async def _emit_expiry_warning_webhook(
+    agent_id: str,
+    family_id: str,
+    exp_timestamp: int,
+    seconds_remaining: int,
+) -> None:
+    """
+    Emit a ``token.expiring_soon`` webhook for the given token family.
+
+    Uses a Redis dedup key so the event is sent at most once per token family
+    lifetime to avoid spamming the subscriber.
+    """
+    try:
+        from agentauth.core.redis import get_redis_client
+        from agentauth.tasks.webhooks import dispatch_event
+
+        redis_client = get_redis_client()
+        dedup_key = f"webhook:expiry_warning:{family_id}"
+
+        already_sent = await redis_client.exists(dedup_key)
+        if already_sent:
+            return
+
+        # Mark as sent; TTL = remaining token lifetime so the key auto-expires
+        await redis_client.set(dedup_key, "1", ex=max(seconds_remaining, 1))
+
+        expires_at = datetime.fromtimestamp(exp_timestamp, UTC)
+        refresh_before = expires_at.replace(second=expires_at.second - 0)
+        from datetime import timedelta
+
+        refresh_before = expires_at - timedelta(seconds=60)
+
+        await dispatch_event(
+            event_type="token.expiring_soon",
+            payload={
+                "event": "token.expiring_soon",
+                "agent_id": agent_id,
+                "family_id": family_id,
+                "expires_at": expires_at.isoformat(),
+                "refresh_before": refresh_before.isoformat(),
+                "seconds_remaining": seconds_remaining,
+            },
+            agent_id=agent_id,
+        )
+    except Exception:
+        logger.warning(
+            "token_expiry_webhook_failed",
+            agent_id=agent_id,
+            family_id=family_id,
+            exc_info=True,
         )

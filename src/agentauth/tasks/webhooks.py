@@ -18,6 +18,8 @@ SUPPORTED_EVENTS = {
     "agent.suspended",
     "policy.violated",
     "delegation.revoked",
+    "token.expiring_soon",
+    "token.refreshed",
 }
 
 
@@ -140,14 +142,26 @@ async def deliver_webhook(
     )
 
 
-async def dispatch_event(event_type: str, payload: dict[str, Any]) -> None:
+async def dispatch_event(
+    event_type: str,
+    payload: dict[str, Any],
+    agent_id: str | None = None,
+) -> None:
     """
     Find all subscriptions for an event type and dispatch webhook deliveries.
 
     Called by services after completing actions that trigger webhooks.
+
+    Args:
+        event_type: Event type string (must be in SUPPORTED_EVENTS)
+        payload: Event payload
+        agent_id: Optional agent UUID string — when provided, only the subscriptions
+                  belonging to that agent are targeted.
     """
     if event_type not in SUPPORTED_EVENTS:
         return
+
+    from uuid import UUID
 
     from sqlalchemy import select
 
@@ -156,9 +170,10 @@ async def dispatch_event(event_type: str, payload: dict[str, Any]) -> None:
 
     session_maker = get_session_maker()
     async with session_maker() as session:
-        result = await session.execute(
-            select(WebhookSubscription).where(WebhookSubscription.enabled.is_(True))
-        )
+        query = select(WebhookSubscription).where(WebhookSubscription.enabled.is_(True))
+        if agent_id is not None:
+            query = query.where(WebhookSubscription.agent_id == UUID(agent_id))
+        result = await session.execute(query)
         subscriptions = [s for s in result.scalars().all() if event_type in s.events]
 
     # Dispatch all deliveries concurrently

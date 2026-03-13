@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     ARRAY,
+    INTEGER,
     TIMESTAMP,
     Enum,
     ForeignKey,
@@ -94,6 +95,12 @@ class Credential(BaseModel):
 
     revoked_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True),
+        nullable=True,
+    )
+
+    # Custom token lifetime in seconds (null = use server default)
+    token_lifetime_seconds: Mapped[int | None] = mapped_column(
+        INTEGER,
         nullable=True,
     )
 

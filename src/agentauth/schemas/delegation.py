@@ -35,6 +35,10 @@ class DelegationResponse(BaseModel):
     constraints: dict[str, Any]
     chain_depth: int
     max_chain_depth: int
+    # max_absolute_chain_depth is an alias for max_chain_depth for self-documentation
+    max_absolute_chain_depth: int
+    # How many further re-delegation hops are permitted from the current delegate
+    chain_depth_remaining: int
     expires_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime
@@ -45,14 +49,18 @@ class DelegationResponse(BaseModel):
 
     @classmethod
     def from_model(cls, delegation: object) -> "DelegationResponse":
+        chain_depth: int = delegation.chain_depth  # type: ignore[attr-defined]
+        max_chain_depth: int = delegation.max_chain_depth  # type: ignore[attr-defined]
         data = {
             "id": delegation.id,  # type: ignore[attr-defined]
             "delegator_agent_id": delegation.delegator_agent_id,  # type: ignore[attr-defined]
             "delegate_agent_id": delegation.delegate_agent_id,  # type: ignore[attr-defined]
             "scopes": delegation.scopes,  # type: ignore[attr-defined]
             "constraints": delegation.constraints,  # type: ignore[attr-defined]
-            "chain_depth": delegation.chain_depth,  # type: ignore[attr-defined]
-            "max_chain_depth": delegation.max_chain_depth,  # type: ignore[attr-defined]
+            "chain_depth": chain_depth,
+            "max_chain_depth": max_chain_depth,
+            "max_absolute_chain_depth": max_chain_depth,
+            "chain_depth_remaining": max(0, max_chain_depth - chain_depth),
             "expires_at": delegation.expires_at,  # type: ignore[attr-defined]
             "revoked_at": delegation.revoked_at,  # type: ignore[attr-defined]
             "created_at": delegation.created_at,  # type: ignore[attr-defined]

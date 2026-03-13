@@ -1,0 +1,24 @@
+{
+  "id": "9.3",
+  "phase": "Phase 9 - Agent DX Improvements",
+  "title": "Make Delegation Chain Depth Semantics Explicit and Agent-Readable",
+  "description": "The `max_chain_depth` field on delegations uses cumulative (absolute) depth counting from the root, not relative hops from the current delegator. An AI agent creating a delegation with `max_chain_depth=1` expecting to allow one further re-delegation will be surprised when the delegate immediately cannot re-delegate \u2014 because the current chain is already at depth 1.\n\nThis ambiguity causes silent misconfiguration: the delegation is accepted (201), but the intended behaviour never works. An agent has no way to detect this without attempting a re-delegation and observing a failure.\n\nThis task makes the semantics explicit and machine-readable:\n\n1. **Add `chain_depth_remaining` to `DelegationResponse`**: Computed as `max_chain_depth - chain_depth`. This tells the delegate exactly how many more hops are allowed from their position. A value of `0` means the delegate cannot re-delegate.\n2. **Add `depth_semantics` to the `/discover` response** under a `delegation` key:\n   ```json\n   {\n     \"delegation\": {\n       \"depth_semantics\": \"absolute\",\n       \"depth_semantics_description\": \"max_chain_depth is the maximum absolute depth from the root delegation. chain_depth_remaining shows how many further hops are permitted from the current delegate.\"\n     }\n   }\n   ```\n3. **Improve the chain-depth-exceeded error message**: When a delegation is rejected due to depth, include `chain_depth_remaining: 0` and `effective_max_chain_depth` in the error response body so the agent can log or adapt.\n4. **Rename consideration (non-breaking)**: Add `max_chain_depth` alias `max_absolute_chain_depth` as a read-only field in responses (not required in requests) to make the semantics self-documenting.",
+  "recommended_agent": "Backend Architect",
+  "validation": [
+    "DelegationResponse includes chain_depth_remaining = max_chain_depth - chain_depth",
+    "chain_depth_remaining is 0 when max_chain_depth equals chain_depth (delegate cannot re-delegate)",
+    "GET /discover includes delegation.depth_semantics = 'absolute'",
+    "GET /discover includes delegation.depth_semantics_description explaining cumulative counting",
+    "Chain-depth-exceeded error body includes chain_depth_remaining and effective_max_chain_depth fields",
+    "DelegationResponse includes max_absolute_chain_depth as alias for max_chain_depth",
+    "Existing max_chain_depth field is preserved unchanged (non-breaking)",
+    "Integration test: delegation at depth 1 with max_chain_depth=1 returns chain_depth_remaining=0",
+    "Integration test: delegation at depth 0 with max_chain_depth=3 returns chain_depth_remaining=3",
+    "Integration test: rejected delegation error includes chain_depth_remaining=0 and effective_max_chain_depth"
+  ],
+  "completed": true,
+  "dependencies": [
+    "3.5",
+    "8.3"
+  ]
+}

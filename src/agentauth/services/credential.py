@@ -38,6 +38,7 @@ class CredentialService:
         expires_at: datetime | None = None,
         metadata: dict[str, Any] | None = None,
         actor_id: UUID | None = None,
+        token_lifetime_seconds: int | None = None,
     ) -> tuple[Credential, str]:
         """
         Create a new credential for an agent.
@@ -49,6 +50,7 @@ class CredentialService:
             expires_at: Expiration time (null = never)
             metadata: Additional metadata
             actor_id: ID of actor creating credential (for audit)
+            token_lifetime_seconds: Custom access token lifetime in seconds (null = server default)
 
         Returns:
             Tuple of (Credential object, raw API key)
@@ -71,6 +73,7 @@ class CredentialService:
             scopes=scopes or [],
             expires_at=expires_at,
             credential_metadata=metadata or {},
+            token_lifetime_seconds=token_lifetime_seconds,
         )
 
         self.session.add(credential)
@@ -85,6 +88,7 @@ class CredentialService:
             metadata={
                 "scopes": scopes or [],
                 "expires_at": expires_at.isoformat() if expires_at else None,
+                "token_lifetime_seconds": token_lifetime_seconds,
             },
         )
 

@@ -105,6 +105,12 @@ class Settings(BaseSettings):
         description="TTL for cached authorization decisions in Redis (seconds)",
     )
 
+    # Token expiry warning
+    token_expiry_warning_seconds: int = Field(
+        default=120,
+        description="Emit X-Token-Refresh-Advised header and token.expiring_soon webhook when remaining lifetime drops below this threshold (seconds)",
+    )
+
     # Webhook delivery
     webhook_max_delivery_attempts: int = Field(
         default=5,

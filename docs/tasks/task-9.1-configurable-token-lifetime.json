@@ -1,0 +1,24 @@
+{
+  "id": "9.1",
+  "phase": "Phase 9 - Agent DX Improvements",
+  "title": "Configurable Access Token Lifetime per Credential",
+  "description": "AI agents running long-horizon tasks (e.g. a multi-step data pipeline, a scheduled job, or an orchestrator coordinating sub-agents) are forced to interrupt their workflow every 900 seconds to refresh tokens. Unlike human users who can respond to a login prompt, an agent that fails to refresh mid-task silently receives 401s and must implement its own retry/refresh loop \u2014 adding error-prone boilerplate to every agent that uses the service.\n\nThis task introduces a per-credential token lifetime configuration so that agents (or their operators) can tune the access token expiry to match the expected task duration.\n\nRequired changes:\n1. Add an optional `token_lifetime_seconds` field to the `CredentialCreate` schema (integer, minimum 60, maximum 86400 i.e. 24h, default null = use server default of 900).\n2. When a token is minted via `client_credentials` grant using a credential that has `token_lifetime_seconds` set, use that value for the access token `exp` instead of the server default.\n3. Surface the effective `token_lifetime_seconds` in the `CredentialResponse` so agents can introspect their own credential configuration.\n4. The `refresh_before` field in `TokenResponse` must be computed correctly relative to the actual token lifetime (60 seconds before expiry).\n5. Server-side maximum must be enforced \u2014 requests for `token_lifetime_seconds > 86400` must be rejected with 422 and a clear error message.",
+  "recommended_agent": "Security Engineer",
+  "validation": [
+    "CredentialCreate accepts optional token_lifetime_seconds (60\u201386400)",
+    "Token minted with a custom-lifetime credential has exp matching the configured lifetime",
+    "CredentialResponse includes token_lifetime_seconds field (null if using server default)",
+    "refresh_before in TokenResponse is always 60s before the actual token expiry",
+    "token_lifetime_seconds > 86400 is rejected with 422 and descriptive error",
+    "token_lifetime_seconds < 60 is rejected with 422 and descriptive error",
+    "Omitting token_lifetime_seconds falls back to server default (900s)",
+    "Existing credentials without token_lifetime_seconds continue to issue 900s tokens",
+    "Integration test: credential with token_lifetime_seconds=3600 issues token with exp ~3600s in the future",
+    "Integration test: credential with token_lifetime_seconds=100000 is rejected at creation time"
+  ],
+  "completed": true,
+  "dependencies": [
+    "1.4",
+    "2.2"
+  ]
+}

@@ -38,7 +38,7 @@ class TokenService:
         scopes: list[str] | None = None,
         audience: str | list[str] | None = None,
         token_type: str = "access",
-        expires_in_minutes: int | None = None,
+        expires_in_minutes: float | None = None,
         delegation_chain: list[UUID] | None = None,
         algorithm: KeyAlgorithm = KeyAlgorithm.RS256,
         family_id: str | None = None,

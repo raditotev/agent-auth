@@ -1,0 +1,24 @@
+{
+  "id": "9.2",
+  "phase": "Phase 9 - Agent DX Improvements",
+  "title": "Surface Quickstart Scope Constraints to Agents via Discover and Error Responses",
+  "description": "AI agents bootstrapping via the `quickstart` endpoint receive a token with empty scopes (`scopes: []`). If an agent attempts to authenticate with that token and requests specific scopes (e.g. `agents.read`), it receives a generic `400 invalid_scope` error with no indication of why or what to do next. Unlike a developer who can read documentation, an agent has no prior knowledge that quickstart tokens cannot carry scopes \u2014 it must either fail, or be told explicitly.\n\nThis task improves agent-facing discoverability in two places:\n\n1. **`/discover` endpoint**: Add a `quickstart` key to the discovery response that describes the quickstart flow's constraints. Example addition:\n   ```json\n   {\n     \"quickstart\": {\n       \"description\": \"Registers an agent and issues a root token with empty scopes. To obtain a scoped token, first create a credential with the desired scopes using the quickstart access_token, then authenticate with that credential.\",\n       \"scopes\": [],\n       \"next_steps\": [\"create_credential\", \"authenticate\"]\n     }\n   }\n   ```\n2. **`invalid_scope` error response**: When a `client_credentials` request fails because the requested scopes exceed the credential's allowed scopes, include a `hint` field in the error body explaining that quickstart credentials issue empty-scope tokens and that a scoped credential must be created first. The hint should only be included when the credential is the initial quickstart credential (i.e. has `scopes: []`).\n\nThese changes allow an agent to self-correct without external documentation.",
+  "recommended_agent": "Backend Architect",
+  "validation": [
+    "GET /discover includes a top-level 'quickstart' object describing scope constraints and next steps",
+    "The 'quickstart.scopes' field is an empty array, accurately reflecting the constraint",
+    "The 'quickstart.next_steps' field lists ['create_credential', 'authenticate'] as the required follow-up actions",
+    "When authenticating with a zero-scope credential and requesting scopes, the 400 error body includes a 'hint' field",
+    "The hint message instructs the agent to create a scoped credential first",
+    "The hint is NOT included on scope errors for non-empty-scope credentials (to avoid noise)",
+    "Existing 400 invalid_scope behavior is unchanged for all other cases",
+    "Integration test: discover response contains quickstart metadata",
+    "Integration test: auth with quickstart key + scopes returns 400 with hint field present",
+    "Integration test: auth with scoped credential + escalated scopes returns 400 without hint field"
+  ],
+  "completed": true,
+  "dependencies": [
+    "4.6",
+    "2.3"
+  ]
+}

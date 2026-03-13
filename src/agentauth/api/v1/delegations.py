@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import or_, select
 
 from agentauth.core.database import DbSession
+from agentauth.core.exceptions import ValidationError
 from agentauth.models.delegation import Delegation
 from agentauth.schemas.delegation import (
     DelegationChainResponse,
@@ -51,6 +52,13 @@ async def create_delegation(
             max_chain_depth=payload.max_chain_depth,
             expires_at=payload.expires_at,
         )
+    except ValidationError as e:
+        detail: dict[str, Any] = {"error": "invalid_delegation", "error_description": str(e)}
+        detail.update(e.detail)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        ) from e
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

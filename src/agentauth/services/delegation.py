@@ -125,8 +125,13 @@ class DelegationService:
         # Validate chain depth
         new_chain_depth = chain_depth + 1
         if new_chain_depth > max_chain_depth:
-            raise ValueError(
-                f"chain_depth_exceeded: Chain depth {new_chain_depth} exceeds maximum {max_chain_depth}"
+            raise ValidationError(
+                f"chain_depth_exceeded: Chain depth {new_chain_depth} exceeds maximum {max_chain_depth}",
+                detail={
+                    "error": "chain_depth_exceeded",
+                    "chain_depth_remaining": 0,
+                    "effective_max_chain_depth": max_chain_depth,
+                },
             )
 
         delegation = Delegation(
