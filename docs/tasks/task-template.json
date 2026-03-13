@@ -1,0 +1,18 @@
+{
+  "id": "X.Y",
+  "phase": "Phase X - <Phase Name>",
+  "title": "<Short Task Title>",
+  "description": "<Detailed description of what needs to be implemented. Include context, motivation, and specific requirements. For multi-part tasks, enumerate each part explicitly.>",
+  "recommended_agent": "<Agent type best suited for this task. Check available agents. Examples: 'Backend Architect' for system design and APIs, 'Database Optimizer' for schema/query work, 'Security Engineer' for auth/crypto tasks, 'DevOps Automator' for infra/CI, 'AI Engineer' for ML/model tasks, 'Technical Writer' for docs, 'general-purpose' for mixed or unclear tasks.>",
+  "validation": [
+    "<Specific, testable acceptance criterion>",
+    "<Another criterion — prefer observable behavior over implementation details>",
+    "<Tests verify <scenario> for success path>",
+    "<Tests verify <scenario> for error/edge path>"
+  ],
+  "completed": false,
+  "dependencies": [
+    "<task-id that must be completed first, e.g. '1.3'>",
+    "<another dependency if applicable>"
+  ]
+}
