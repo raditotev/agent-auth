@@ -25,7 +25,7 @@ class AlreadyExistsError(AgentAuthError):
     pass
 
 
-class ValidationError(AgentAuthError):
+class ValidationError(AgentAuthError, ValueError):
     """Validation failed."""
 
     pass
