@@ -1,4 +1,4 @@
-.PHONY: help install dev up down clean test lint format typecheck migrate migrate-create run prod-up-blue prod-up-green prod-down prod-logs prod-ps backup backup-list backup-restore
+.PHONY: help install dev up down clean test lint ci-lint format typecheck migrate migrate-create run prod-up-blue prod-up-green prod-down prod-logs prod-ps backup backup-list backup-restore
 
 help:
 	@echo "AgentAuth - Available commands:"
@@ -8,6 +8,7 @@ help:
 	@echo "  down           - Stop docker-compose services"
 	@echo "  clean          - Remove docker volumes and containers"
 	@echo "  test           - Run tests"
+	@echo "  ci-lint        - Run all lint checks matching CI (ruff check, ruff format --check, mypy)"
 	@echo "  lint           - Run ruff linter"
 	@echo "  format         - Format code with ruff"
 	@echo "  typecheck      - Run mypy type checker"
@@ -51,6 +52,11 @@ test-integration:
 
 test-watch:
 	uv run pytest -x -q --ff
+
+ci-lint:
+	uv run ruff check src/
+	uv run ruff format --check src/
+	uv run mypy src/
 
 lint:
 	uv run ruff check src/
