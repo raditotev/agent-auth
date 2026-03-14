@@ -354,6 +354,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         # Verify credentials and load agent
         try:
+            auth_result: tuple[Agent, list[str], TokenClaims | None] | None
             if api_key:
                 auth_result = await self._verify_api_key(api_key)
             else:
@@ -436,12 +437,12 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 response.headers["X-Token-Refresh-Advised"] = "true"
 
                 # Fire-and-forget webhook for token.expiring_soon
-                agent = getattr(request.state, "agent", None)
+                expiring_agent: Agent | None = getattr(request.state, "agent", None)
                 family_id = getattr(request.state, "token_family_id", None)
-                if agent is not None and family_id is not None:
+                if expiring_agent is not None and family_id is not None:
                     asyncio.create_task(  # noqa: RUF006
                         _emit_expiry_warning_webhook(
-                            agent_id=str(agent.id),
+                            agent_id=str(expiring_agent.id),
                             family_id=family_id,
                             exp_timestamp=token_exp,
                             seconds_remaining=remaining_seconds,

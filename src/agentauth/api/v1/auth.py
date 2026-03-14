@@ -323,7 +323,7 @@ async def _handle_client_credentials(
                 "allowed_scopes": allowed_scopes,
             },
         )
-        error_detail: dict = {
+        error_detail: dict[str, str] = {
             "error": "invalid_scope",
             "error_description": "Requested scopes exceed credential's allowed scopes",
         }
