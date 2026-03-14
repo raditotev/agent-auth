@@ -61,9 +61,11 @@ def _http_error(e: httpx.HTTPStatusError) -> dict:
 
 @asynccontextmanager
 async def _lifespan(_: FastMCP) -> AsyncIterator[None]:
+    global _client
     yield
     if _client is not None:
         await _client.close()
+        _client = None
 
 
 mcp = FastMCP(
