@@ -3,7 +3,7 @@ name = "agentauth-mcp-server"
 version = "0.1.0"
 description = "MCP server exposing AgentAuth identity and authentication tools for AI agents"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "BUSL-1.1" }
 requires-python = ">=3.12"
 dependencies = [
     "mcp[cli]>=1.0.0",
