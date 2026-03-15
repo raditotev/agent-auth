@@ -1,5 +1,7 @@
 # AgentAuth MCP Server
 
+<!-- mcp-name: io.github.radi-totev/agent-auth -->
+
 MCP (Model Context Protocol) server that exposes AgentAuth identity and authentication tools to any MCP-compatible AI agent.
 
 ## What it does
