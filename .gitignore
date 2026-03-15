@@ -57,3 +57,7 @@ Thumbs.db
 
 # uv
 .uv/
+
+# Prod artifacts
+.active-slot
+backups/
