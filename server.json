@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.radi-totev/agent-auth",
+  "name": "io.github.raditotev/agent-auth",
   "title": "AgentAuth",
   "description": "Identity and auth for AI agents: credentials, tokens, delegations, and permission checks.",
   "repository": {
