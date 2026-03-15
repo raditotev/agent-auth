@@ -1,0 +1,18 @@
+{
+  "id": "10.1",
+  "phase": "Phase 10 - Distribution & Discovery",
+  "title": "Publish AgentAuth MCP Server to the MCP Registry",
+  "description": "AgentAuth exposes an MCP server that allows AI agents and Claude Code users to interact with the AgentAuth identity service directly from their AI environment. To make this server discoverable by the broader MCP ecosystem, it must be published to the official MCP Registry (registry.modelcontextprotocol.io).\n\nThe registry only hosts metadata — the actual package must first be published to PyPI. The publish flow then uses the `mcp-publisher` CLI to submit a `server.json` manifest that links the registry entry to the PyPI package.\n\nThis task covers the full end-to-end publication pipeline:\n\n1. **Prepare the package for PyPI**:\n   - Ensure `pyproject.toml` has correct `name`, `version`, `description`, `repository`, and `license` fields.\n   - Add an `mcpName` field (or equivalent verification property supported by the registry for PyPI packages) per the registry's package-type requirements.\n   - Build and publish to PyPI using `uv build` and `uv publish`.\n\n2. **Install `mcp-publisher` CLI**:\n   - Install via Homebrew (`brew install mcp-publisher`) or the official binary release.\n\n3. **Generate and configure `server.json`**:\n   - Run `mcp-publisher init` in the project root.\n   - Set `registryType` to `pypi` and `identifier` to the PyPI package name.\n   - Set `name` to `io.github.radi-totev/agent-auth` (GitHub-auth namespace).\n   - Document all required environment variables (database URL, Redis URL, secret key, etc.) in the `environmentVariables` array.\n   - Set `transport.type` to `stdio` (or `http` if the server supports SSE/HTTP transport).\n\n4. **Authenticate and publish**:\n   - Authenticate via `mcp-publisher login github`.\n   - Publish via `mcp-publisher publish`.\n   - Verify the entry is live via the registry search API.\n\n5. **Automate future releases** (stretch goal):\n   - Add a GitHub Actions workflow that publishes to PyPI and re-runs `mcp-publisher publish` on every version tag push.",
+  "recommended_agent": "DevOps Automator",
+  "validation": [
+    "PyPI package is published and accessible at its npm/PyPI URL",
+    "server.json is committed to the repository root and passes `mcp-publisher publish` without errors",
+    "Registry entry is discoverable via `curl 'https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.radi-totev/agent-auth'`",
+    "server.json lists all required environment variables with correct isRequired and isSecret flags",
+    "server.json name matches the mcpName verification field in pyproject.toml",
+    "MCP server can be installed and invoked by a Claude Code user after discovery",
+    "(Stretch) GitHub Actions workflow publishes to PyPI and registry on version tag push"
+  ],
+  "completed": true,
+  "dependencies": []
+}
