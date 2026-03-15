@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.radi-totev/agent-auth",
   "title": "AgentAuth",
-  "description": "MCP server for AgentAuth — identity and authentication service for AI agents. Register agents, issue credentials, mint tokens, manage delegations, and check permissions via MCP tool calls.",
+  "description": "Identity and auth for AI agents: credentials, tokens, delegations, and permission checks.",
   "repository": {
     "url": "https://github.com/radi-totev/agent-auth",
     "source": "github"
