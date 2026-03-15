@@ -1,0 +1,56 @@
+name: Publish MCP Server
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    name: Build, publish to PyPI, and register with MCP Registry
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for OIDC (both PyPI trusted publishing and mcp-publisher)
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set version in mcp-server/pyproject.toml
+        run: |
+          sed -i "s/^version = .*/version = \"${{ steps.version.outputs.version }}\"/" mcp-server/pyproject.toml
+
+      - name: Set version in server.json
+        run: |
+          jq --arg v "${{ steps.version.outputs.version }}" \
+            '.version = $v | .packages[0].version = $v' \
+            server.json > server.tmp && mv server.tmp server.json
+
+      - name: Build package
+        working-directory: mcp-server
+        run: uv build
+
+      - name: Publish to PyPI (trusted publishing / OIDC)
+        working-directory: mcp-server
+        run: uv publish --trusted-publishing always
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
