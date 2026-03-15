@@ -64,3 +64,6 @@ backups/
 
 # Git worktrees
 .worktrees/
+
+#mcp registry
+.mcpregistry*
