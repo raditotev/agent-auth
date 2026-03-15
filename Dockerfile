@@ -19,6 +19,7 @@ COPY alembic.ini ./
 COPY migrations/ ./migrations/
 COPY src/ ./src/
 COPY mcp-server/src/ ./mcp-server/src/
+COPY mcp-server/README.md ./mcp-server/
 
 # Install the project and workspace members
 RUN uv sync --frozen --no-dev
