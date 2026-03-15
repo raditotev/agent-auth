@@ -52,17 +52,17 @@ See [docs/deployment.md](docs/deployment.md#10-monitoring--logging) for LogQL qu
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Language | Python 3.12+ |
-| Package Manager | `uv` |
-| Web Framework | FastAPI |
-| Database | PostgreSQL 16 |
-| ORM | SQLAlchemy 2.0 + Alembic |
-| Cache / Rate Limit | Redis 7 |
-| Crypto | PyJWT + cryptography |
-| Task Queue | Celery + Redis |
-| Testing | pytest + pytest-asyncio + httpx |
+| Layer              | Technology                      |
+| ------------------ | ------------------------------- |
+| Language           | Python 3.12+                    |
+| Package Manager    | `uv`                            |
+| Web Framework      | FastAPI                         |
+| Database           | PostgreSQL 16                   |
+| ORM                | SQLAlchemy 2.0 + Alembic        |
+| Cache / Rate Limit | Redis 7                         |
+| Crypto             | PyJWT + cryptography            |
+| Task Queue         | Celery + Redis                  |
+| Testing            | pytest + pytest-asyncio + httpx |
 
 ---
 
@@ -134,61 +134,61 @@ ADMIN_API_KEY=your-admin-api-key-here
 
 ### Authentication
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/auth/token` | Token exchange (multiple grant types) |
-| `POST` | `/api/v1/auth/token/introspect` | Token introspection (RFC 7662) |
-| `POST` | `/api/v1/auth/token/revoke` | Token revocation (RFC 7009) |
-| `GET` | `/api/v1/auth/jwks` | Public key set (RFC 7517) |
-| `GET` | `/.well-known/agent-configuration` | Agent auth server metadata |
+| Method | Endpoint                           | Description                           |
+| ------ | ---------------------------------- | ------------------------------------- |
+| `POST` | `/api/v1/auth/token`               | Token exchange (multiple grant types) |
+| `POST` | `/api/v1/auth/token/introspect`    | Token introspection (RFC 7662)        |
+| `POST` | `/api/v1/auth/token/revoke`        | Token revocation (RFC 7009)           |
+| `GET`  | `/api/v1/auth/jwks`                | Public key set (RFC 7517)             |
+| `GET`  | `/.well-known/agent-configuration` | Agent auth server metadata            |
 
 ### Agent Management
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/agents` | Register new agent |
-| `POST` | `/api/v1/agents/bootstrap` | Self-register a root agent |
-| `GET` | `/api/v1/agents` | List agents (scoped to caller's subtree) |
-| `GET` | `/api/v1/agents/{agent_id}` | Get agent details |
-| `PATCH` | `/api/v1/agents/{agent_id}` | Update agent |
-| `DELETE` | `/api/v1/agents/{agent_id}` | Deactivate agent |
+| Method   | Endpoint                    | Description                              |
+| -------- | --------------------------- | ---------------------------------------- |
+| `POST`   | `/api/v1/agents`            | Register new agent                       |
+| `POST`   | `/api/v1/agents/bootstrap`  | Self-register a root agent               |
+| `GET`    | `/api/v1/agents`            | List agents (scoped to caller's subtree) |
+| `GET`    | `/api/v1/agents/{agent_id}` | Get agent details                        |
+| `PATCH`  | `/api/v1/agents/{agent_id}` | Update agent                             |
+| `DELETE` | `/api/v1/agents/{agent_id}` | Deactivate agent                         |
 
 ### Credential Management
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/credentials` | Issue new API key (raw value returned once) |
-| `GET` | `/api/v1/credentials` | List credentials (masked) |
-| `POST` | `/api/v1/credentials/{cred_id}/rotate` | Rotate credential |
-| `DELETE` | `/api/v1/credentials/{cred_id}` | Revoke credential |
+| Method   | Endpoint                               | Description                                 |
+| -------- | -------------------------------------- | ------------------------------------------- |
+| `POST`   | `/api/v1/credentials`                  | Issue new API key (raw value returned once) |
+| `GET`    | `/api/v1/credentials`                  | List credentials (masked)                   |
+| `POST`   | `/api/v1/credentials/{cred_id}/rotate` | Rotate credential                           |
+| `DELETE` | `/api/v1/credentials/{cred_id}`        | Revoke credential                           |
 
 ### Policies & Scopes
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/policies` | Create policy |
-| `GET` | `/api/v1/policies` | List policies |
+| Method | Endpoint                    | Description               |
+| ------ | --------------------------- | ------------------------- |
+| `POST` | `/api/v1/policies`          | Create policy             |
+| `GET`  | `/api/v1/policies`          | List policies             |
 | `POST` | `/api/v1/policies/evaluate` | Dry-run policy evaluation |
-| `POST` | `/api/v1/scopes` | Register custom scope |
-| `GET` | `/api/v1/scopes` | List scopes |
+| `POST` | `/api/v1/scopes`            | Register custom scope     |
+| `GET`  | `/api/v1/scopes`            | List scopes               |
 
 ### Delegations
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/delegations` | Create delegation |
-| `GET` | `/api/v1/delegations` | List delegations |
-| `GET` | `/api/v1/delegations/{id}/chain` | View full delegation chain |
-| `DELETE` | `/api/v1/delegations/{id}` | Revoke delegation (cascading) |
+| Method   | Endpoint                         | Description                   |
+| -------- | -------------------------------- | ----------------------------- |
+| `POST`   | `/api/v1/delegations`            | Create delegation             |
+| `GET`    | `/api/v1/delegations`            | List delegations              |
+| `GET`    | `/api/v1/delegations/{id}/chain` | View full delegation chain    |
+| `DELETE` | `/api/v1/delegations/{id}`       | Revoke delegation (cascading) |
 
 ### Observability
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/stats` | System statistics (agents, credentials, tokens) — requires `X-Admin-Key` |
-| `GET` | `/api/v1/audit/events` | Query audit log — requires `X-Admin-Key` |
-| `GET` | `/health` | Health check |
-| `GET` | `/ready` | Readiness check |
+| Method | Endpoint               | Description                                                              |
+| ------ | ---------------------- | ------------------------------------------------------------------------ |
+| `GET`  | `/api/v1/stats`        | System statistics (agents, credentials, tokens) — requires `X-Admin-Key` |
+| `GET`  | `/api/v1/audit/events` | Query audit log — requires `X-Admin-Key`                                 |
+| `GET`  | `/health`              | Health check                                                             |
+| `GET`  | `/ready`               | Readiness check                                                          |
 
 **Admin endpoints** (`/stats`, `/audit/events`) are for platform operators only. They require the `X-Admin-Key` header set to `ADMIN_API_KEY`. Root agents cannot access these — they use separate platform-level authentication.
 
@@ -268,45 +268,3 @@ tests/
 ├── unit/                # Isolated service/crypto tests
 └── integration/         # Full API flow tests with real Postgres + Redis
 ```
-
----
-
-## Implementation Status
-
-### Phase 1 — Foundation
-- [x] FastAPI app factory with health/readiness endpoints
-- [x] SQLAlchemy 2.0 async engine + Alembic migrations
-- [x] Agent model with self-referencing hierarchy
-- [x] Root agent bootstrap registration
-- [x] Credential issuance (API keys, argon2 hashing)
-- [x] API key authentication middleware
-
-### Phase 2 — Token Service
-- [x] RSA + ECDSA key pair management (JWK)
-- [x] JWT token minting with agent claims
-- [x] `client_credentials` grant type
-- [x] Token introspection (RFC 7662) with Redis caching
-- [x] Token revocation (RFC 7009) with JTI blocklist
-- [x] Rotating refresh tokens with replay detection
-
-### Phase 3 — Authorization
-- [x] Scope registry with hierarchical resolution
-- [x] Policy model with CRUD endpoints
-- [x] Policy evaluation engine (deny-override)
-- [x] Authorization middleware
-- [x] Delegation model with chain traversal
-- [x] `agent_delegation` grant type
-
-### Phase 4 — Observability & Hardening
-- [x] Audit log query API
-- [x] Sliding window rate limiting
-- [x] Webhook delivery (Celery, HMAC-SHA256 signed)
-- [x] Well-known discovery endpoint
-
-### Phase 5 — Advanced (Planned)
-- [ ] Agent attestation (TEE support)
-- [ ] DID (Decentralized Identifier) support
-- [ ] mTLS client certificates
-- [ ] Multi-tenant / Organization support
-- [ ] Agent-to-agent mutual authentication
-- [ ] Dashboard UI
