@@ -61,3 +61,6 @@ Thumbs.db
 # Prod artifacts
 .active-slot
 backups/
+
+# Git worktrees
+.worktrees/
