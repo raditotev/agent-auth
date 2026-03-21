@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentauth.core.exceptions import CredentialError, NotFoundError
 from agentauth.core.redis import get_redis_client
 from agentauth.core.security import (
+    async_hash_secret,
+    async_verify_secret,
     generate_api_key,
     get_key_prefix,
-    hash_secret,
-    verify_secret,
 )
 from agentauth.models.credential import Credential, CredentialType
 from agentauth.services.audit import AuditService
@@ -61,8 +61,8 @@ class CredentialService:
         # Extract prefix for identification
         prefix = get_key_prefix(raw_key, length=8)
 
-        # Hash the key for storage
-        key_hash = hash_secret(raw_key)
+        # Hash the key for storage — run in executor to avoid blocking the event loop
+        key_hash = await async_hash_secret(raw_key)
 
         # Create credential record
         credential = Credential(
@@ -205,7 +205,7 @@ class CredentialService:
             if not credential.is_valid():
                 continue
 
-            if verify_secret(credential.hash, raw_key):
+            if await async_verify_secret(credential.hash, raw_key):
                 # Record usage in Redis for deferred batch flush to DB
                 redis_client = get_redis_client()
                 await redis_client.set(

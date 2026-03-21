@@ -1,9 +1,11 @@
 """Security utilities for hashing, encryption, and key generation."""
 
+import asyncio
 import base64
 import hashlib
 import secrets
 import string
+from functools import partial
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -67,6 +69,39 @@ def verify_secret(hash: str, secret: str) -> bool:
         return True
     except VerifyMismatchError:
         return False
+
+
+async def async_verify_secret(hash: str, secret: str) -> bool:
+    """
+    Verify a secret against its Argon2 hash without blocking the event loop.
+
+    Argon2 verification is CPU-intensive and must not run on the async event loop
+    directly — doing so blocks all concurrent coroutines for hundreds of milliseconds
+    per call, causing cascading request queue build-up under load.
+
+    Args:
+        hash: Argon2 hash string
+        secret: Plain text secret to verify
+
+    Returns:
+        True if secret matches hash, False otherwise
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, partial(verify_secret, hash, secret))
+
+
+async def async_hash_secret(secret: str) -> str:
+    """
+    Hash a secret using Argon2 without blocking the event loop.
+
+    Args:
+        secret: Plain text secret to hash
+
+    Returns:
+        Argon2 hash string
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, partial(hash_secret, secret))
 
 
 def _get_fernet(secret_key: str) -> Fernet:

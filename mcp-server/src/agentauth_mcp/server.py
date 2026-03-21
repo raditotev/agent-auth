@@ -14,10 +14,12 @@ Configuration via environment variables:
 """
 
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
+import structlog
 from mcp.server.fastmcp import FastMCP
 
 from agentauth_mcp.client import AgentAuthHTTPClient
@@ -82,6 +84,42 @@ mcp = FastMCP(
     ),
 )
 
+logger = structlog.get_logger()
+
+# ---------------------------------------------------------------------------
+# Tool instrumentation helpers
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_KEYS: frozenset[str] = frozenset({
+    "api_key", "access_token", "refresh_token_value", "token",
+})
+
+
+def _sanitize_args(kwargs: dict) -> dict:
+    return {k: ("***" if k in _SENSITIVE_KEYS else v) for k, v in kwargs.items()}
+
+
+async def _run_tool(tool_name: str, coro, sanitized_args: dict | None = None) -> dict:
+    logger.info("mcp_tool_called", tool_name=tool_name, args=sanitized_args or {})
+    start = time.monotonic()
+    try:
+        result = await coro
+        duration_ms = round((time.monotonic() - start) * 1000, 2)
+        outcome = "error" if isinstance(result, dict) and "error" in result else "success"
+        log = logger.error if outcome == "error" else logger.info
+        log("mcp_tool_completed", tool_name=tool_name, outcome=outcome, duration_ms=duration_ms)
+        return result
+    except Exception as exc:
+        duration_ms = round((time.monotonic() - start) * 1000, 2)
+        logger.error(
+            "mcp_tool_completed",
+            tool_name=tool_name,
+            outcome="error",
+            duration_ms=duration_ms,
+            error=str(exc),
+        )
+        return {"error": str(exc), "status_code": 500, "detail": "Unexpected error"}
+
 
 # ---------------------------------------------------------------------------
 # Tools — Discovery
@@ -96,10 +134,12 @@ async def discover() -> dict:
     grant types, available scopes, token lifetimes, and all endpoint URLs.
     Call this first to understand what the service offers.
     """
-    try:
-        return await _get_client().discover()
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().discover()
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("discover", _call())
 
 
 # ---------------------------------------------------------------------------
@@ -128,10 +168,12 @@ async def quickstart(
         agent_type: One of: orchestrator, autonomous, assistant, tool
         description: Optional description of the agent's purpose
     """
-    try:
-        return await _get_client().quickstart(name, agent_type, description)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().quickstart(name, agent_type, description)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("quickstart", _call(), {"name": name, "agent_type": agent_type})
 
 
 @mcp.tool()
@@ -147,10 +189,12 @@ async def list_agents(
         limit: Max results (1-100, default 50)
         offset: Pagination offset
     """
-    try:
-        return await _get_client().list_agents(auth=access_token, limit=limit, offset=offset)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().list_agents(auth=access_token, limit=limit, offset=offset)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("list_agents", _call(), {"limit": limit, "offset": offset})
 
 
 @mcp.tool()
@@ -164,10 +208,12 @@ async def get_agent(agent_id: str, access_token: str) -> dict:
         agent_id: UUID of the agent
         access_token: Bearer token for authentication
     """
-    try:
-        return await _get_client().get_agent(agent_id, auth=access_token)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().get_agent(agent_id, auth=access_token)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("get_agent", _call(), {"agent_id": agent_id})
 
 
 # ---------------------------------------------------------------------------
@@ -190,17 +236,18 @@ async def authenticate(
         scopes: Optional list of scopes to request (e.g. ["api.read", "agents.write"]).
                 If omitted, all scopes allowed by the credential are granted.
     """
-    client = _get_client()
-    key = api_key or _default_api_key()
-    if not key:
-        return {
-            "error": "No API key provided and AGENTAUTH_API_KEY is not set. "
-            "Either pass api_key or use 'quickstart' to register a new agent."
-        }
-    try:
-        return await client.authenticate(key, scopes)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        key = api_key or _default_api_key()
+        if not key:
+            return {
+                "error": "No API key provided and AGENTAUTH_API_KEY is not set. "
+                "Either pass api_key or use 'quickstart' to register a new agent."
+            }
+        try:
+            return await _get_client().authenticate(key, scopes)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("authenticate", _call(), {"scopes": scopes})
 
 
 @mcp.tool()
@@ -213,10 +260,12 @@ async def refresh_token(refresh_token_value: str) -> dict:
     Args:
         refresh_token_value: The refresh token from a previous authenticate call
     """
-    try:
-        return await _get_client().refresh_token(refresh_token_value)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().refresh_token(refresh_token_value)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("refresh_token", _call())
 
 
 @mcp.tool()
@@ -229,10 +278,12 @@ async def introspect_token(token: str) -> dict:
     Args:
         token: The access or refresh token to introspect
     """
-    try:
-        return await _get_client().introspect_token(token)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().introspect_token(token)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("introspect_token", _call())
 
 
 @mcp.tool()
@@ -245,10 +296,12 @@ async def revoke_token(token: str) -> dict:
     Args:
         token: The token to revoke
     """
-    try:
-        return await _get_client().revoke_token(token)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().revoke_token(token)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("revoke_token", _call())
 
 
 # ---------------------------------------------------------------------------
@@ -272,10 +325,12 @@ async def create_credential(
         access_token: Bearer token for authentication
         scopes: Optional scope restrictions for the new key
     """
-    try:
-        return await _get_client().create_credential(agent_id, auth=access_token, scopes=scopes)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().create_credential(agent_id, auth=access_token, scopes=scopes)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("create_credential", _call(), {"agent_id": agent_id, "scopes": scopes})
 
 
 @mcp.tool()
@@ -289,10 +344,12 @@ async def rotate_credential(credential_id: str, access_token: str) -> dict:
         credential_id: UUID of the credential to rotate
         access_token: Bearer token for authentication
     """
-    try:
-        return await _get_client().rotate_credential(credential_id, auth=access_token)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().rotate_credential(credential_id, auth=access_token)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("rotate_credential", _call(), {"credential_id": credential_id})
 
 
 @mcp.tool()
@@ -303,10 +360,12 @@ async def revoke_credential(credential_id: str, access_token: str) -> dict:
         credential_id: UUID of the credential to revoke
         access_token: Bearer token for authentication
     """
-    try:
-        return await _get_client().revoke_credential(credential_id, auth=access_token)
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().revoke_credential(credential_id, auth=access_token)
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool("revoke_credential", _call(), {"credential_id": credential_id})
 
 
 # ---------------------------------------------------------------------------
@@ -335,16 +394,27 @@ async def create_delegation(
         max_chain_depth: How many times the delegate can re-delegate (default 3)
         expires_in_hours: Optional expiry in hours from now
     """
-    try:
-        return await _get_client().create_delegation(
-            delegate_agent_id=delegate_agent_id,
-            scopes=scopes,
-            auth=access_token,
-            max_chain_depth=max_chain_depth,
-            expires_in_hours=expires_in_hours,
-        )
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().create_delegation(
+                delegate_agent_id=delegate_agent_id,
+                scopes=scopes,
+                auth=access_token,
+                max_chain_depth=max_chain_depth,
+                expires_in_hours=expires_in_hours,
+            )
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool(
+        "create_delegation",
+        _call(),
+        {
+            "delegate_agent_id": delegate_agent_id,
+            "scopes": scopes,
+            "max_chain_depth": max_chain_depth,
+            "expires_in_hours": expires_in_hours,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -370,15 +440,21 @@ async def check_permission(
         resource: The resource path (e.g. "/api/v1/credentials")
         access_token: Bearer token for authentication
     """
-    try:
-        return await _get_client().check_permission(
-            agent_id=agent_id,
-            action=action,
-            resource=resource,
-            auth=access_token,
-        )
-    except httpx.HTTPStatusError as e:
-        return _http_error(e)
+    async def _call() -> dict:
+        try:
+            return await _get_client().check_permission(
+                agent_id=agent_id,
+                action=action,
+                resource=resource,
+                auth=access_token,
+            )
+        except httpx.HTTPStatusError as e:
+            return _http_error(e)
+    return await _run_tool(
+        "check_permission",
+        _call(),
+        {"agent_id": agent_id, "action": action, "resource": resource},
+    )
 
 
 # ---------------------------------------------------------------------------
