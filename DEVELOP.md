@@ -1,0 +1,270 @@
+# AgentAuth
+
+> Auth0, but for agents. Identity and authentication service for AI agents.
+
+AgentAuth issues verifiable agent credentials, manages API key lifecycles, and provides OAuth-like flows designed for machine-to-machine interactions.
+
+---
+
+## Overview
+
+As AI agents proliferate, a critical infrastructure gap has emerged: agents have no standardized way to prove who they are, who authorized them, and what they're allowed to do. AgentAuth fills this gap.
+
+**What it provides:**
+
+- **Agent Identity** — Cryptographically verifiable credentials that uniquely identify an agent, its version, and its capabilities
+- **Delegated Authorization** — Scoped, time-limited, revocable permissions delegated from parent agents or root authorities
+- **Machine-to-Machine Auth Flows** — OAuth-like grant types purpose-built for agents calling APIs, tools, and other agents
+- **API Key Lifecycle Management** — Issuance, rotation, revocation, and audit of agent API keys
+- **Policy-Based Access Control** — Fine-grained authorization with deny-override policy evaluation
+- **Audit Trail** — Immutable log of every security-relevant event
+
+---
+
+## Observability
+
+### Structured Logging
+
+All application logs use [structlog](https://www.structlog.org/) with JSON output. Every log entry includes `service_name`, `environment`, `hostname`, and `timestamp` (ISO 8601 UTC). Stdlib logging from uvicorn and SQLAlchemy is routed through the same pipeline, so all log output is consistently structured and machine-parseable.
+
+### Request Correlation
+
+Every HTTP request is assigned a `request_id` via the `X-Request-ID` header. If the client provides the header it is preserved; otherwise one is auto-generated. The ID propagates through all log entries for that request, enabling end-to-end tracing across middleware, services, and tasks.
+
+### Log Aggregation (Production)
+
+In production, logs are collected by [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/), stored in [Loki](https://grafana.com/oss/loki/), and visualized in [Grafana](https://grafana.com/). The full stack is included in `docker-compose.prod.yml` and starts automatically alongside the application.
+
+Grafana is available at `http://localhost:3000` (credentials: `admin` / `$GRAFANA_PASSWORD`).
+
+### Pre-built Dashboard
+
+A Grafana dashboard (**AgentAuth Operations**) is auto-provisioned on startup, providing out-of-the-box visibility into:
+
+- Request rates and error rates (4xx / 5xx)
+- Latency percentiles (P50 / P95 / P99)
+- Authentication failures and rate limit activity
+- Top agents by request count and per-endpoint traffic breakdown
+
+See [docs/deployment.md](docs/deployment.md#10-monitoring--logging) for LogQL query examples and retention configuration.
+
+---
+
+## Tech Stack
+
+| Layer              | Technology                      |
+| ------------------ | ------------------------------- |
+| Language           | Python 3.12+                    |
+| Package Manager    | `uv`                            |
+| Web Framework      | FastAPI                         |
+| Database           | PostgreSQL 16                   |
+| ORM                | SQLAlchemy 2.0 + Alembic        |
+| Cache / Rate Limit | Redis 7                         |
+| Crypto             | PyJWT + cryptography            |
+| Task Queue         | Celery + Redis                  |
+| Testing            | pytest + pytest-asyncio + httpx |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- Docker + Docker Compose
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repo-url>
+cd agent-auth
+
+# Install dependencies
+make dev
+
+# Start Postgres and Redis
+make up
+
+# Copy environment file
+cp .env.example .env
+
+# Run database migrations
+make migrate
+
+# Start the development server
+make run
+```
+
+The API will be available at `http://localhost:8000`.
+
+Interactive docs: `http://localhost:8000/docs`
+
+### Environment Variables
+
+```env
+# Application
+APP_NAME=AgentAuth
+ENVIRONMENT=development
+DEBUG=false
+
+# Database
+DATABASE_URL=postgresql+asyncpg://agentauth:agentauth_dev_password@localhost:5432/agentauth
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# Security
+SECRET_KEY=your-secret-key-here
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# API
+API_V1_PREFIX=/api/v1
+CORS_ORIGINS=["*"]
+
+# Admin (platform operators only — not agent auth)
+ADMIN_API_KEY=your-admin-api-key-here
+```
+
+---
+
+## API Reference
+
+### Authentication
+
+| Method | Endpoint                           | Description                           |
+| ------ | ---------------------------------- | ------------------------------------- |
+| `POST` | `/api/v1/auth/token`               | Token exchange (multiple grant types) |
+| `POST` | `/api/v1/auth/token/introspect`    | Token introspection (RFC 7662)        |
+| `POST` | `/api/v1/auth/token/revoke`        | Token revocation (RFC 7009)           |
+| `GET`  | `/api/v1/auth/jwks`                | Public key set (RFC 7517)             |
+| `GET`  | `/.well-known/agent-configuration` | Agent auth server metadata            |
+
+### Agent Management
+
+| Method   | Endpoint                    | Description                              |
+| -------- | --------------------------- | ---------------------------------------- |
+| `POST`   | `/api/v1/agents`            | Register new agent                       |
+| `POST`   | `/api/v1/agents/bootstrap`  | Self-register a root agent               |
+| `GET`    | `/api/v1/agents`            | List agents (scoped to caller's subtree) |
+| `GET`    | `/api/v1/agents/{agent_id}` | Get agent details                        |
+| `PATCH`  | `/api/v1/agents/{agent_id}` | Update agent                             |
+| `DELETE` | `/api/v1/agents/{agent_id}` | Deactivate agent                         |
+
+### Credential Management
+
+| Method   | Endpoint                               | Description                                 |
+| -------- | -------------------------------------- | ------------------------------------------- |
+| `POST`   | `/api/v1/credentials`                  | Issue new API key (raw value returned once) |
+| `GET`    | `/api/v1/credentials`                  | List credentials (masked)                   |
+| `POST`   | `/api/v1/credentials/{cred_id}/rotate` | Rotate credential                           |
+| `DELETE` | `/api/v1/credentials/{cred_id}`        | Revoke credential                           |
+
+### Policies & Scopes
+
+| Method | Endpoint                    | Description               |
+| ------ | --------------------------- | ------------------------- |
+| `POST` | `/api/v1/policies`          | Create policy             |
+| `GET`  | `/api/v1/policies`          | List policies             |
+| `POST` | `/api/v1/policies/evaluate` | Dry-run policy evaluation |
+| `POST` | `/api/v1/scopes`            | Register custom scope     |
+| `GET`  | `/api/v1/scopes`            | List scopes               |
+
+### Delegations
+
+| Method   | Endpoint                         | Description                   |
+| -------- | -------------------------------- | ----------------------------- |
+| `POST`   | `/api/v1/delegations`            | Create delegation             |
+| `GET`    | `/api/v1/delegations`            | List delegations              |
+| `GET`    | `/api/v1/delegations/{id}/chain` | View full delegation chain    |
+| `DELETE` | `/api/v1/delegations/{id}`       | Revoke delegation (cascading) |
+
+### Observability
+
+| Method | Endpoint               | Description                                                              |
+| ------ | ---------------------- | ------------------------------------------------------------------------ |
+| `GET`  | `/api/v1/stats`        | System statistics (agents, credentials, tokens) — requires `X-Admin-Key` |
+| `GET`  | `/api/v1/audit/events` | Query audit log — requires `X-Admin-Key`                                 |
+| `GET`  | `/health`              | Health check                                                             |
+| `GET`  | `/ready`               | Readiness check                                                          |
+
+**Admin endpoints** (`/stats`, `/audit/events`) are for platform operators only. They require the `X-Admin-Key` header set to `ADMIN_API_KEY`. Root agents cannot access these — they use separate platform-level authentication.
+
+### Auth Grant Types
+
+The `/auth/token` endpoint supports:
+
+- **`client_credentials`** — Agent authenticates with its own API key or client secret
+- **`agent_delegation`** — Agent presents a delegation token from its parent to get scoped access
+- **`token_exchange`** (RFC 8693) — Exchange one token type for another with reduced scope
+- **`refresh_token`** — Rotating refresh token flow with replay detection
+
+---
+
+## Identity Model
+
+Every entity in the system — orchestrators, sub-agents, tool-calling workers — is an **Agent**. There is no separate "Owner" table. Hierarchy is expressed through self-referencing parent relationships and the Delegation table.
+
+- A **root agent** (`parent_agent_id = null`, `trust_level = root`) is the trust anchor for its subtree
+- Child agents are registered by their parent and inherit a subset of the parent's permissions
+- Delegation chains are enforced: scopes can only be attenuated, never escalated
+
+```
+Root Agent
+  └── Child Agent (orchestrator)
+        └── Sub-Agent (tool worker)
+              └── Ephemeral Agent (single-task)
+```
+
+---
+
+## Security
+
+- API keys stored as **argon2id hashes** — raw value shown once at creation, no recovery
+- JWTs signed with **RS256** (RSA-2048) for external tokens
+- Token **JTI blocklist** in Redis for revocation
+- Refresh token **family tracking** — reuse of a revoked refresh token revokes the entire family
+- **Scope attenuation** enforced on all delegations
+- **Sliding window rate limiting** per agent via Redis
+- Every credential operation produces an **immutable audit event**
+- Audit table is append-only at the database role level
+
+---
+
+## Development
+
+```bash
+make help          # Show all available commands
+
+make test          # Run full test suite
+make test-unit     # Unit tests only
+make test-integration  # Integration tests (requires docker compose up)
+
+make lint          # Run ruff linter
+make format        # Format code with ruff
+make typecheck     # Run mypy type checker
+
+make migrate                 # Apply pending migrations
+make migrate-create          # Create a new migration (interactive)
+```
+
+### Project Structure
+
+```
+src/agentauth/
+├── main.py              # FastAPI app factory
+├── config.py            # Pydantic settings
+├── dependencies.py      # FastAPI dependency injection
+├── models/              # SQLAlchemy ORM models
+├── schemas/             # Pydantic request/response schemas
+├── api/v1/              # Route handlers
+├── services/            # Business logic
+├── core/                # Shared infrastructure (DB, Redis, security)
+└── tasks/               # Celery async tasks (key rotation, webhooks)
+
+tests/
+├── unit/                # Isolated service/crypto tests
+└── integration/         # Full API flow tests with real Postgres + Redis
+```

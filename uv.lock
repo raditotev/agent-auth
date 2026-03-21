@@ -94,7 +94,7 @@ dev = [
 
 [[package]]
 name = "agentauth-mcp-server"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "mcp-server" }
 dependencies = [
     { name = "httpx" },
